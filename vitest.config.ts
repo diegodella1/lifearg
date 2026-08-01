@@ -15,5 +15,10 @@ export default defineConfig({
       thresholds: { statements: 80, branches: 75, functions: 80, lines: 80 },
     },
   },
-  resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "server-only": path.resolve(__dirname, "./src/test/server-only.ts"),
+    },
+  },
 });

@@ -65,6 +65,8 @@ npm run deploy:cloudflare
 
 `wrangler.jsonc` habilita `nodejs_compat`, assets estáticos, observabilidad y TLS/DNS automático mediante Custom Domain. Para rollback: `npx wrangler rollback`.
 
+Supabase es opcional: sin sus variables, sesiones y eventos operan en modo efímero. Para persistencia, configurar `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y el secret `SUPABASE_SERVICE_ROLE_KEY` antes del despliegue.
+
 ## Privacidad
 
 Texto libre se procesa y descarta. `Reiniciar` elimina favoritos y eventos locales. La migración separa cuenta/PII de recomendaciones y activa RLS para datos privados. Producción debe completar consentimiento versionado, exportación y borrado dentro del procedimiento legal definido.

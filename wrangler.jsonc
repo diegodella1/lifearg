@@ -17,9 +17,6 @@
     { "name": "API_EXPENSIVE_LIMITER", "namespace_id": "41002", "simple": { "limit": 20, "period": 60 } },
     { "name": "API_AUTH_LIMITER", "namespace_id": "41003", "simple": { "limit": 5, "period": 60 } }
   ],
-  "secrets": {
-    "required": ["SUPABASE_SERVICE_ROLE_KEY"]
-  },
   "routes": [
     {
       "pattern": "lifearg.diegodella.ar",

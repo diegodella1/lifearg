@@ -23,5 +23,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:coverage
       - run: npm run data:validate
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       - run: npm exec opennextjs-cloudflare build
       - run: npm exec wrangler deploy -- --dry-run

@@ -3,6 +3,7 @@ import { readStoredJson, writeStoredJson } from "./storage";
 
 const allowedEvents = new Set<string>(eventNames);
 const consentKey = "life-match:analytics-consent";
+export const consentPolicyVersion = "2026-08-01";
 
 function createEventId() {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
@@ -15,6 +16,9 @@ export function analyticsConsent() {
 
 export function setAnalyticsConsent(value: boolean) {
   writeStoredJson(consentKey, value);
+  if (typeof window !== "undefined") {
+    void fetch("/api/consent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ purpose: "analytics", granted: value, policyVersion: consentPolicyVersion }) }).catch(() => undefined);
+  }
 }
 
 export function track(event: EventName, properties: EventProperties = {}) {
@@ -29,7 +33,7 @@ export function track(event: EventName, properties: EventProperties = {}) {
       method: "POST",
       headers: { "content-type": "application/json" },
       keepalive: true,
-      body: JSON.stringify({ sessionId, consentScope: "analytics", events: [{ eventId: record.event_id, event, occurredAt: record.occurred_at, properties }] }),
+      body: JSON.stringify({ sessionId, consentScope: "analytics", consentPolicyVersion, events: [{ eventId: record.event_id, event, occurredAt: record.occurred_at, properties }] }),
     }).catch(() => undefined);
   }
 }

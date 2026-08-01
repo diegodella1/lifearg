@@ -5,11 +5,12 @@ type RateLimitBinding = { limit(input: { key: string }): Promise<{ success: bool
 type RateLimitName = "API_GENERAL_LIMITER" | "API_EXPENSIVE_LIMITER" | "API_AUTH_LIMITER";
 
 export async function allowRequest(bindingName: RateLimitName, key: string) {
+  const failOpen = process.env.NODE_ENV !== "production" || process.env.CLOUDFLARE_RATE_LIMIT_FAIL_OPEN === "true";
   try {
     const { env } = getCloudflareContext() as unknown as { env: Record<RateLimitName, RateLimitBinding | undefined> };
     const binding = env[bindingName];
-    return binding ? (await binding.limit({ key })).success : true;
+    return binding ? (await binding.limit({ key })).success : failOpen;
   } catch {
-    return true;
+    return failOpen;
   }
 }

@@ -2,10 +2,11 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import * as Sentry from "@sentry/nextjs";
 
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
-    console.error("app_render_failed", { digest: error.digest, message: error.message });
+    Sentry.captureException(error);
   }, [error]);
 
   return (

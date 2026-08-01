@@ -5,6 +5,7 @@ import { MatcherExperience } from "./matcher-experience";
 describe("MatcherExperience", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.history.replaceState({}, "", "/");
     Element.prototype.scrollIntoView = vi.fn();
   });
   afterEach(cleanup);
@@ -25,7 +26,7 @@ describe("MatcherExperience", () => {
     fireEvent.click(screen.getByRole("button", { name: /ver mis ciudades/i }));
     expect(screen.getByText(/Encontramos lugares/i)).toBeInTheDocument();
     expect(screen.getAllByText(/\/100/).length).toBeGreaterThanOrEqual(3);
-    expect(screen.getByRole("img", { name: /mapa de argentina/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /mapa de argentina/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /mesa de decisión/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /alquileres para probar/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /impuestos y aportes/i })).not.toBeInTheDocument();
@@ -46,5 +47,9 @@ describe("MatcherExperience", () => {
     fireEvent.click(pins[1]);
 
     expect(screen.getByRole("combobox", { name: /^ciudad$/i })).toHaveDisplayValue(secondCity ?? "");
+    expect(new URL(window.location.href).searchParams.get("city")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: /^impuestos$/i }));
+    expect(new URL(window.location.href).searchParams.get("tool")).toBe("taxes");
   });
 });

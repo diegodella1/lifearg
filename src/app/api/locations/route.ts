@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { apiError, parseRequest } from "@/lib/api";
+import { apiError, mutationOriginError, parseRequest, rateLimitError } from "@/lib/api";
 import { normalizeGeorefLocations } from "@/lib/locations";
 import { allowRequest } from "@/lib/server/rate-limit";
-import { actorId } from "@/lib/server/session";
+import { rateLimitActor } from "@/lib/server/session";
 
 const searchSchema = z.object({ query: z.string().trim().min(3).max(80) });
 
 export async function POST(request: Request) {
-  const actor = actorId(request);
-  if (!await allowRequest("API_GENERAL_LIMITER", `locations:${actor}`)) return apiError("RATE_LIMITED", "Hiciste demasiadas búsquedas. Reintentá en un minuto.", 429);
+  const originError = mutationOriginError(request);
+  if (originError) return originError;
+  if (!await allowRequest("API_GENERAL_LIMITER", `locations:${await rateLimitActor(request)}`)) return rateLimitError("Hiciste demasiadas búsquedas. Reintentá en un minuto.");
   const parsed = await parseRequest(request, searchSchema);
   if ("response" in parsed) return parsed.response;
 

@@ -2,14 +2,20 @@
 
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 export function InfoHeader() {
   const [open, setOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
   const links = [{ href: "/como-funciona", label: "Cómo funciona" }, { href: "/fuentes", label: "Fuentes" }, { href: "/acerca-de", label: "Acerca de" }] as const;
-  return <header className="info-header"><Link className="brand" href="/" translate="no">LIFE MATCH <i>ARGENTINA</i></Link><button aria-expanded={open} aria-label={open ? "Cerrar menú" : "Abrir menú"} className="nav-toggle" onClick={() => setOpen((current) => !current)} type="button">{open ? <X aria-hidden="true" size={21}/> : <Menu aria-hidden="true" size={21}/>}</button><nav aria-label="Información del servicio" className={open ? "is-open" : ""}>{links.map((link) => <Link aria-current={pathname === link.href ? "page" : undefined} href={link.href} key={link.href} onClick={() => setOpen(false)}>{link.label}</Link>)}</nav><Link className="button button--ink info-header__cta" href="/">Crear mi mapa</Link></header>;
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => { if (open && !headerRef.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [open]);
+  return <header className="info-header" onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }} ref={headerRef}><Link className="brand" href="/" translate="no">LIFE MATCH <i>ARGENTINA</i></Link><button aria-expanded={open} aria-label={open ? "Cerrar menú" : "Abrir menú"} className="nav-toggle" onClick={() => setOpen((current) => !current)} type="button">{open ? <X aria-hidden="true" size={21}/> : <Menu aria-hidden="true" size={21}/>}</button><nav aria-label="Información del servicio" className={open ? "is-open" : ""}>{links.map((link) => <Link aria-current={pathname === link.href ? "page" : undefined} href={link.href} key={link.href} onClick={() => setOpen(false)}>{link.label}</Link>)}</nav><Link className="button button--ink info-header__cta" href="/">Crear mi mapa</Link></header>;
 }
 
 export function InfoFooter() {

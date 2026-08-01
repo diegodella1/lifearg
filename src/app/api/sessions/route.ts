@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { parseRequest } from "@/lib/api";
+import { mutationOriginError, parseRequest, rateLimitError } from "@/lib/api";
 import { getServiceSupabase } from "@/lib/server/supabase";
-import { actorId, anonymousCookie } from "@/lib/server/session";
+import { actorId, anonymousCookie, rateLimitActor } from "@/lib/server/session";
+import { allowRequest } from "@/lib/server/rate-limit";
 
 const sessionSchema = z.object({ intent: z.enum(["exploring", "this_year", "leaving", "comparing"]).default("exploring") }).default({ intent: "exploring" });
 
 export async function POST(request: Request) {
+  const originError = mutationOriginError(request);
+  if (originError) return originError;
+  const limiterActor = await rateLimitActor(request);
+  if (!await allowRequest("API_GENERAL_LIMITER", `session:${limiterActor}`)) return rateLimitError("Demasiados intentos. Reintentá en un minuto.");
   const parsed = await parseRequest(request, sessionSchema);
   if ("response" in parsed) return parsed.response;
   const anonymousUserId = actorId(request);

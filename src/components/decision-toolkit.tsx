@@ -9,12 +9,22 @@ import { TaxEstimator } from "./tax-estimator";
 type Tool = "rentals" | "taxes" | "compare";
 
 export function DecisionToolkit({ results, selectedCityId, onSelectCity, compared, onRemoveComparison }: { results: MatchResult[]; selectedCityId: string; onSelectCity: (id: string) => void; compared: MatchResult[]; onRemoveComparison: (id: string) => void }) {
-  const [activeTool, setActiveTool] = useState<Tool>("rentals");
+  const [activeTool, setActiveTool] = useState<Tool>(() => {
+    const requested = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("tool");
+    return requested === "taxes" || requested === "compare" ? requested : "rentals";
+  });
   const tools: Array<{ id: Tool; label: string; icon: typeof Home; badge?: number }> = [
     { id: "rentals", label: "Alquileres", icon: Home },
     { id: "taxes", label: "Impuestos", icon: Calculator },
     { id: "compare", label: "Comparar", icon: GitCompareArrows, badge: compared.length },
   ];
+
+  function selectTool(tool: Tool) {
+    setActiveTool(tool);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tool", tool);
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
 
   function handleTabKey(event: React.KeyboardEvent<HTMLButtonElement>, current: Tool) {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -22,13 +32,13 @@ export function DecisionToolkit({ results, selectedCityId, onSelectCity, compare
     const index = tools.findIndex((tool) => tool.id === current);
     const nextIndex = event.key === "ArrowRight" ? (index + 1) % tools.length : (index - 1 + tools.length) % tools.length;
     const nextTool = tools[nextIndex].id;
-    setActiveTool(nextTool);
+    selectTool(nextTool);
     document.getElementById(`tool-tab-${nextTool}`)?.focus();
   }
 
   return <section className="decision-toolkit" aria-labelledby="decision-title">
     <header className="decision-toolkit__intro"><div><p className="eyebrow">DE LA INTUICIÓN A LA DECISIÓN</p><h2 id="decision-title">Tu mesa de decisión.</h2></div><p>Tomá una ciudad como punto de partida y cruzá vivienda, carga fiscal y diferencias concretas sin perder el hilo del match.</p></header>
-    <div aria-label="Herramientas de decisión" className="tool-tabs" role="tablist">{tools.map(({ id, label, icon: Icon, badge }) => <button aria-controls={`tool-panel-${id}`} aria-selected={activeTool === id} className={activeTool === id ? "is-active" : ""} id={`tool-tab-${id}`} key={id} onClick={() => setActiveTool(id)} onKeyDown={(event) => handleTabKey(event, id)} role="tab" tabIndex={activeTool === id ? 0 : -1} type="button"><Icon aria-hidden="true" size={18}/><span>{label}</span>{badge !== undefined && <small>{badge}</small>}</button>)}</div>
+    <div aria-label="Herramientas de decisión" className="tool-tabs" role="tablist">{tools.map(({ id, label, icon: Icon, badge }) => <button aria-controls={`tool-panel-${id}`} aria-selected={activeTool === id} className={activeTool === id ? "is-active" : ""} id={`tool-tab-${id}`} key={id} onClick={() => selectTool(id)} onKeyDown={(event) => handleTabKey(event, id)} role="tab" tabIndex={activeTool === id ? 0 : -1} type="button"><Icon aria-hidden="true" size={18}/><span>{label}</span>{badge !== undefined && <small>{badge}</small>}</button>)}</div>
     <div aria-labelledby={`tool-tab-${activeTool}`} className="tool-panel" id={`tool-panel-${activeTool}`} role="tabpanel">
       {activeTool === "rentals" && <RentalExplorer onSelectCity={onSelectCity} results={results} selectedCityId={selectedCityId}/>} 
       {activeTool === "taxes" && <TaxEstimator onSelectCity={onSelectCity} results={results} selectedCityId={selectedCityId}/>} 

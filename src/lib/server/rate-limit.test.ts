@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ getCloudflareContext: vi.fn() }));
 
@@ -8,6 +8,7 @@ import { allowRequest } from "./rate-limit";
 
 describe("Cloudflare rate limiting", () => {
   beforeEach(() => mocks.getCloudflareContext.mockReset());
+  afterEach(() => vi.unstubAllEnvs());
 
   it("returns the configured limiter decision", async () => {
     const limit = vi.fn().mockResolvedValue({ success: false });
@@ -27,5 +28,12 @@ describe("Cloudflare rate limiting", () => {
     mocks.getCloudflareContext.mockReturnValue({});
 
     await expect(allowRequest("API_EXPENSIVE_LIMITER", "match:actor-1")).resolves.toBe(true);
+  });
+
+  it("fails closed when a production binding is unavailable", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    mocks.getCloudflareContext.mockReturnValue({ env: {} });
+
+    await expect(allowRequest("API_AUTH_LIMITER", "auth:actor-1")).resolves.toBe(false);
   });
 });

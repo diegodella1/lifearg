@@ -22,6 +22,14 @@ describe("preference extraction", () => {
     expect(result.preferences[0]?.factor).toBe("connectivity");
   });
 
+  it("keeps text local unless AI processing was explicitly accepted", async () => {
+    process.env.OPENAI_API_KEY = "configured-but-not-authorized";
+
+    const result = await extractPreferences("Necesito internet para trabajo remoto");
+
+    expect(result.mode).toBe("local");
+  });
+
   it("returns no inferred preferences for unrelated text", () => {
     expect(extractLocally("Todavía no sé qué busco").preferences).toEqual([]);
   });

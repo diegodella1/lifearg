@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { apiError, parseRequest } from "./api";
+import { apiError, parseRequest, trustedMutationOrigin } from "./api";
 
 function jsonRequest(body: string) {
   return new Request("https://lifearg.example/api", {
@@ -48,5 +48,13 @@ describe("API request helpers", () => {
     await expect(parseRequest(jsonRequest(JSON.stringify({ intent: "  exploring " })), schema)).resolves.toEqual({
       data: { intent: "exploring" },
     });
+  });
+
+  it("accepts same-origin mutations and rejects cross-site origins", () => {
+    const sameOrigin = new Request("https://lifearg.example/api/events", { headers: { origin: "https://lifearg.example" } });
+    const crossSite = new Request("https://lifearg.example/api/events", { headers: { origin: "https://attacker.example" } });
+
+    expect(trustedMutationOrigin(sameOrigin)).toBe(true);
+    expect(trustedMutationOrigin(crossSite)).toBe(false);
   });
 });

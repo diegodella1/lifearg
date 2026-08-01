@@ -4,8 +4,17 @@ import { cities, factorLabels } from "@/data/cities";
 import { dataSources } from "@/data/sources";
 import { FACTORS } from "@/lib/types";
 import { CityLocator } from "@/components/city-locator";
+import type { Metadata } from "next";
 
 export function generateStaticParams() { return cities.map((city) => ({ id: city.id })); }
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const city = cities.find((item) => item.id === id);
+  if (!city) return {};
+  const title = `Vivir en ${city.name} | Life Match Argentina`;
+  return { title, description: city.summary, alternates: { canonical: `/ciudades/${city.id}` }, openGraph: { type: "article", locale: "es_AR", title, description: city.summary } };
+}
 
 export default async function CityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

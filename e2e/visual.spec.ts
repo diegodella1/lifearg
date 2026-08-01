@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.setItem("life-match:analytics-consent", "false"));
@@ -8,6 +9,8 @@ test("landing keeps the editorial atlas hierarchy", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /¿En qué ciudad argentina/i })).toBeVisible();
   await expect(page).toHaveScreenshot("landing.png", { animations: "disabled" });
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter((violation) => violation.impact === "critical" || violation.impact === "serious")).toEqual([]);
 });
 
 test("quiz and decision table remain visually stable", async ({ page }) => {
@@ -21,6 +24,8 @@ test("quiz and decision table remain visually stable", async ({ page }) => {
   await page.getByRole("button", { name: /ver mis ciudades/i }).click();
   await expect(page.getByRole("heading", { name: /tu mesa de decisión/i })).toBeVisible();
   await expect(page).toHaveScreenshot("results-shortlist.png", { animations: "disabled" });
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter((violation) => violation.impact === "critical" || violation.impact === "serious")).toEqual([]);
   await page.getByRole("heading", { name: /tu mesa de decisión/i }).scrollIntoViewIfNeeded();
   await expect(page).toHaveScreenshot("results-toolkit.png", { animations: "disabled" });
 });

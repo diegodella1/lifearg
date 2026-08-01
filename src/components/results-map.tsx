@@ -14,7 +14,7 @@ export function ResultsMap({ results, origin, selectedCityId, onSelectCity }: { 
 
   return <aside className="results-map" aria-labelledby="results-map-title">
     <header><p className="eyebrow">CARTOGRAFÍA PERSONAL</p><h2 id="results-map-title">Tu mapa posible</h2><p>{origin ? `Desde ${origin.locality}, ${origin.province}` : "Cinco puntos para empezar a explorar"}</p></header>
-    <svg viewBox="0 0 360 640" role="img" aria-label="Mapa de Argentina con las ciudades recomendadas">
+    <svg viewBox="0 0 360 640" role="group" aria-label="Mapa de Argentina con las ciudades recomendadas">
       <path className="map-country" d={argentinaOutlinePath}/>
       <path className="map-contour" d="M115 155 C190 180 240 165 292 190 M92 285 C170 315 250 292 297 320 M104 425 C170 450 222 442 258 470"/>
       {originPoint && results.map((result) => { const destination = projectArgentinaPoint(result.city.coordinates); return <line className="map-route" key={`route-${result.city.id}`} x1={originPoint.x} y1={originPoint.y} x2={destination.x} y2={destination.y}/>; })}

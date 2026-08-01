@@ -8,6 +8,7 @@ import { buildProfileFromAnswers } from "@/lib/profile";
 import { analyticsConsent, clearLocalData, setAnalyticsConsent, track } from "@/lib/analytics";
 import { readStoredJson, writeStoredJson } from "@/lib/storage";
 import type { Factor, MatchResult, QuickAnswers, RelocationTolerance, UserOrigin } from "@/lib/types";
+import type { RuntimeCapabilities } from "@/lib/server/capabilities";
 import Link from "next/link";
 import { ResultsMap } from "./results-map";
 import { DecisionToolkit } from "./decision-toolkit";
@@ -44,7 +45,9 @@ function Choice<T extends string>({ active, value, title, detail, onChange }: { 
   );
 }
 
-export function MatcherExperience() {
+const disabledCapabilities: RuntimeCapabilities = { accounts: false, ai: false, analytics: false, monitoring: false };
+
+export function MatcherExperience({ capabilities = disabledCapabilities }: { capabilities?: RuntimeCapabilities }) {
   const [stage, setStage] = useState<Stage>("landing");
   const [answers, setAnswers] = useState(initialAnswers);
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -56,16 +59,46 @@ export function MatcherExperience() {
   const [chips, setChips] = useState<Factor[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [consent, setConsent] = useState<boolean | null>(null);
+  const [aiConsent, setAiConsent] = useState(false);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       setFavorites(readStoredJson<string[]>("life-match:favorites", []));
       setSessionId(readStoredJson<string | null>("life-match:session-id", null));
       setConsent(analyticsConsent());
+      try {
+        const draft = JSON.parse(window.sessionStorage.getItem("life-match:quiz-draft") ?? "null") as { version?: number; answers?: QuickAnswers } | null;
+        if (draft?.version === 1 && draft.answers && Array.isArray(draft.answers.lifestyle)) setAnswers(draft.answers);
+      } catch { window.sessionStorage.removeItem("life-match:quiz-draft"); }
     });
     track("landing_viewed");
+    if (capabilities.accounts) {
+      void fetch("/api/account/favorites", { cache: "no-store" }).then(async (response) => {
+        if (!response.ok) return;
+        const body = await response.json() as { cityIds?: string[] };
+        if (body.cityIds?.length) {
+          setFavorites((current) => [...new Set([...current, ...body.cityIds!])]);
+        }
+      }).catch(() => undefined);
+      if (new URLSearchParams(window.location.search).get("auth") === "confirmed") {
+        void fetch("/api/account/claim", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => undefined);
+        const cleanedUrl = new URL(window.location.href);
+        cleanedUrl.searchParams.delete("auth");
+        window.history.replaceState({}, "", `${cleanedUrl.pathname}${cleanedUrl.search}${cleanedUrl.hash}`);
+      }
+    }
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [capabilities.accounts]);
+
+  useEffect(() => {
+    if (stage !== "landing" && stage !== "results") window.sessionStorage.setItem("life-match:quiz-draft", JSON.stringify({ version: 1, answers }));
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (stage === "landing" || stage === "results") return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [answers, stage]);
 
   const profile = useMemo(() => buildProfileFromAnswers(answers), [answers]);
   const results = useMemo(() => rankCities(profile, cities, { origin: answers.origin, tolerance: answers.relocationTolerance }), [profile, answers.origin, answers.relocationTolerance]);
@@ -79,7 +112,7 @@ export function MatcherExperience() {
     else {
       track("onboarding_completed");
       track("recommendations_generated", { count: 5, algorithm_version: "rules-v1.1.0", origin_provided: Boolean(answers.origin), relocation_tolerance: answers.relocationTolerance ?? "none" });
-      if (!answers.origin) void fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sessionId ? { sessionId, profile } : profile) }).catch(() => undefined);
+      void fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...(sessionId ? { sessionId } : {}), profile, ...(answers.origin ? { origin: answers.origin, relocationTolerance: answers.relocationTolerance } : {}) }) }).catch(() => undefined);
       setStage("results");
     }
   };
@@ -93,7 +126,7 @@ export function MatcherExperience() {
     track("free_text_submitted", { char_bucket: answers.narrative.length < 100 ? "short" : "long" });
     setExtracting(true);
     try {
-      const response = await fetch("/api/preferences/extract", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: answers.narrative }) });
+      const response = await fetch("/api/preferences/extract", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: answers.narrative, ...(capabilities.ai && aiConsent ? { aiConsent: true } : {}) }) });
       const data = await response.json();
       const extracted = (data.preferences ?? []).filter((item: { confidence: number }) => item.confidence >= 0.6).map((item: { factor: Factor }) => item.factor);
       setChips(extracted);
@@ -109,6 +142,7 @@ export function MatcherExperience() {
     setFavorites((current) => {
       const nextValue = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
       writeStoredJson("life-match:favorites", nextValue);
+      if (capabilities.accounts) void fetch("/api/account/favorites", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ cityIds: nextValue }) }).catch(() => undefined);
       track(current.includes(id) ? "city_unsaved" : "city_saved", { city_id: id });
       return nextValue;
     });
@@ -116,7 +150,14 @@ export function MatcherExperience() {
 
   function toggleCompare(id: string) {
     track("comparison_city_added", { city_id: id });
-    setCompare((current) => current.includes(id) ? current.filter((item) => item !== id) : current.length < 3 ? [...current, id] : current);
+    setCompare((current) => {
+      const nextValue = current.includes(id) ? current.filter((item) => item !== id) : current.length < 3 ? [...current, id] : current;
+      const url = new URL(window.location.href);
+      if (nextValue.length) url.searchParams.set("compare", nextValue.join(","));
+      else url.searchParams.delete("compare");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+      return nextValue;
+    });
   }
 
   async function startOnboarding() {
@@ -132,7 +173,7 @@ export function MatcherExperience() {
     } catch { /* Offline onboarding remains available. */ }
   }
 
-  if (stage === "landing") return <><Landing onStart={() => { void startOnboarding(); }} />{consent === null && <ConsentBanner onChoose={(value) => { setAnalyticsConsent(value); setConsent(value); }} />}</>;
+  if (stage === "landing") return <><Landing onStart={() => { void startOnboarding(); }} />{capabilities.analytics && consent === null && <ConsentBanner onChoose={(value) => { setAnalyticsConsent(value); setConsent(value); }} />}</>;
   if (stage === "results") return (
     <Results
       results={results}
@@ -147,8 +188,9 @@ export function MatcherExperience() {
       onExpand={(id) => setExpanded(expanded === id ? null : id)}
       onShowAll={() => setShowAll(true)}
       onRefine={() => setStage("priorities")}
-      onReset={() => { clearLocalData(); setAnswers(initialAnswers); setFavorites([]); setCompare([]); setStage("landing"); }}
+      onReset={() => { clearLocalData(); window.sessionStorage.removeItem("life-match:quiz-draft"); setAnswers(initialAnswers); setFavorites([]); setCompare([]); setStage("landing"); }}
       origin={answers.origin}
+      accountsAvailable={capabilities.accounts}
     />
   );
 
@@ -161,7 +203,7 @@ export function MatcherExperience() {
       </header>
       <section className="quiz-card">
         {stage === "intent" && <Intent answers={answers} setAnswers={setAnswers} />}
-        {stage === "story" && <Story answers={answers} setAnswers={setAnswers} chips={chips} />}
+        {stage === "story" && <Story aiAvailable={capabilities.ai} aiConsent={aiConsent} answers={answers} setAiConsent={setAiConsent} setAnswers={setAnswers} chips={chips} />}
         {stage === "basics" && <Basics answers={answers} setAnswers={setAnswers} />}
         {stage === "origin" && <Origin answers={answers} setAnswers={setAnswers} />}
         {stage === "priorities" && <Priorities answers={answers} setAnswers={setAnswers} />}
@@ -219,11 +261,12 @@ function Intent({ answers, setAnswers }: FormProps) {
   </div></div>;
 }
 
-function Story({ answers, setAnswers, chips }: FormProps & { chips: Factor[] }) {
+function Story({ answers, setAnswers, chips, aiAvailable, aiConsent, setAiConsent }: FormProps & { chips: Factor[]; aiAvailable: boolean; aiConsent: boolean; setAiConsent: (value: boolean) => void }) {
   return <div><p className="step">02 — LA VIDA QUE QUERÉS</p><h2>Imaginá un buen martes.</h2><p className="question-note">¿Qué pasa alrededor tuyo? ¿Qué no puede faltar? Podés saltear este paso.</p>
     <textarea aria-label="Descripción de la vida que buscás" autoComplete="off" className="story-input" name="lifestyle_story" value={answers.narrative} maxLength={1000} onChange={(event) => setAnswers({ ...answers, narrative: event.target.value })} placeholder="Ejemplo: trabajo desde casa, camino con mi perro y quiero verde cerca…" />
     {chips.length > 0 && <div className="chips">{chips.map((factor) => <span key={factor}>{factorLabels[factor]}</span>)}</div>}
-    <p className="field-hint">La descripción se procesa y descarta. Nunca inferimos datos sensibles.</p>
+    {aiAvailable && <label className="ai-consent"><input checked={aiConsent} name="ai_processing_consent" onChange={(event) => setAiConsent(event.target.checked)} type="checkbox"/><span><b>Interpretar este texto con IA</b><small>Opcional. Se envía sólo para esta interpretación y no se guarda.</small></span></label>}
+    <p className="field-hint">{aiAvailable && aiConsent ? "La descripción se procesa con IA y se descarta." : "La descripción se interpreta localmente en este dispositivo."} Nunca inferimos datos sensibles.</p>
   </div>;
 }
 
@@ -309,22 +352,50 @@ function SelectField<T extends string>({ label, value, options, onChange }: { la
   return <label className="select-field"><span>{label}</span><select name={label.toLocaleLowerCase("es").replaceAll(" ", "_")} value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map(([id,text]) => <option key={id} value={id}>{text}</option>)}</select><ChevronDown aria-hidden="true" size={18}/></label>;
 }
 
-function Results({ results, origin, favorites, compare, rejected, expanded, showAll, onFavorite, onCompare, onReject, onExpand, onShowAll, onRefine, onReset }: { results: MatchResult[]; origin?: UserOrigin; favorites: string[]; compare: string[]; rejected: string[]; expanded: string | null; showAll: boolean; onFavorite: (id: string) => void; onCompare: (id: string) => void; onReject: (id: string) => void; onExpand: (id: string) => void; onShowAll: () => void; onRefine: () => void; onReset: () => void }) {
-  const [selectedCityId, setSelectedCityId] = useState(results[0]?.city.id ?? "");
+function Results({ results, origin, favorites, compare, rejected, expanded, showAll, accountsAvailable, onFavorite, onCompare, onReject, onExpand, onShowAll, onRefine, onReset }: { results: MatchResult[]; origin?: UserOrigin; favorites: string[]; compare: string[]; rejected: string[]; expanded: string | null; showAll: boolean; accountsAvailable: boolean; onFavorite: (id: string) => void; onCompare: (id: string) => void; onReject: (id: string) => void; onExpand: (id: string) => void; onShowAll: () => void; onRefine: () => void; onReset: () => void }) {
+  const [selectedCityId, setSelectedCityId] = useState(() => {
+    const requested = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("city");
+    return requested && results.some((result) => result.city.id === requested) ? requested : results[0]?.city.id ?? "";
+  });
+  const [notice, setNotice] = useState("");
+  const [lastRejected, setLastRejected] = useState<string | null>(null);
+  function selectCity(id: string) {
+    setSelectedCityId(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set("city", id);
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+  function rejectCity(id: string) {
+    const restoring = rejected.includes(id);
+    onReject(id);
+    setLastRejected(restoring ? null : id);
+    setNotice(restoring ? "Ciudad restaurada." : "Ciudad descartada de esta shortlist.");
+  }
+  async function shareCity(result: MatchResult) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("city", result.city.id);
+    const nativeShare = (navigator as unknown as { share?: (data: ShareData) => Promise<void> }).share;
+    try {
+      if (nativeShare) await nativeShare.call(navigator, { title: `${result.city.name} · Life Match Argentina`, url: url.toString() });
+      else await navigator.clipboard.writeText(url.toString());
+      setNotice(nativeShare ? "Enlace compartido." : "Enlace copiado.");
+      track("result_shared", { city_id: result.city.id });
+    } catch { setNotice("No pudimos compartir el enlace. Reintentá."); }
+  }
   const visible = showAll ? results : results.slice(0, 3);
   const compared = results.filter((result) => compare.includes(result.city.id));
-  return <main className="results-page" id="main-content"><header className="results-nav"><span className="brand" translate="no">LIFE MATCH <i>ARGENTINA</i></span><div><button className="button button--ghost" onClick={onReset}><RotateCcw aria-hidden="true" size={16}/> Reiniciar</button><button className="button button--ink" onClick={onRefine}>Afinar resultados</button></div></header>
+  return <main className="results-page" id="main-content"><header className="results-nav"><span className="brand" translate="no">LIFE MATCH <i>ARGENTINA</i></span><div><button className="button button--ghost" onClick={() => { if (window.confirm("¿Reiniciar el mapa y borrar tus respuestas locales?")) onReset(); }}><RotateCcw aria-hidden="true" size={16}/> Reiniciar</button><button className="button button--ink" onClick={onRefine}>Afinar resultados</button></div></header>
     <section className="results-intro"><p className="eyebrow">TU MAPA POSIBLE</p><h1>Encontramos lugares<br/>que hablan tu idioma.</h1><p>El porcentaje compara tus prioridades contra el snapshot actual. Confianza indica cobertura y frescura, no certeza sobre tu futuro.</p></section>
-    <section className="results-grid"><ResultsMap onSelectCity={setSelectedCityId} origin={origin} results={results} selectedCityId={selectedCityId}/><section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${selectedCityId === result.city.id ? "result-card--selected" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} id={`result-${result.city.id}`} key={result.city.id}>
+    <section className="results-grid"><ResultsMap onSelectCity={selectCity} origin={origin} results={results} selectedCityId={selectedCityId}/><section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${selectedCityId === result.city.id ? "result-card--selected" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} id={`result-${result.city.id}`} key={result.city.id}>
       <div className="rank">0{result.rank}</div><div className="score"><b>{result.match}</b><span>/100<br/>MATCH</span></div>
       <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}{result.isCurrentCity ? " · TU PUNTO DE PARTIDA" : ""}</p><h2><Link href={`/ciudades/${result.city.id}`} onClick={() => track("city_opened", { city_id: result.city.id, rank: result.rank })}>{result.city.name}</Link></h2><p>{result.city.summary}</p>{result.distanceKm !== null && <p className="distance-note"><MapPin aria-hidden="true" size={15}/>{result.distanceKm.toLocaleString("es-AR")} km desde tu localidad{result.distancePenalty ? ` · −${result.distancePenalty} puntos por distancia` : " · dentro de tu rango"}</p>}<div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check aria-hidden="true" size={14}/>{reason}</span>)}</div>
         <button aria-expanded={expanded === result.city.id} className="explain-toggle" onClick={() => onExpand(result.city.id)}>Cómo llegamos a este match <ChevronDown aria-hidden="true" size={16}/></button>
         {expanded === result.city.id && <div className="explanation"><div className="metrics">{[...result.contributions].sort((a,b)=>b.points-a.points).slice(0,6).map((item) => <div key={item.factor}><span>{item.label}</span><i><b style={{ width: `${item.compatibility}%` }}/></i><strong>{Math.round(item.compatibility)}</strong></div>)}</div><p><b>Cuidado con:</b> {result.tradeoffs.join(" · ")}</p><small>Modelo {result.algorithmVersion} · Snapshot {result.dataSnapshotId} · Datos al {result.city.updatedAt}</small></div>}
       </div>
-      <aside className="result-side"><span className={`confidence confidence--${result.confidenceLabel}`}>Confianza {result.confidenceLabel}</span><b>{result.city.costRange}</b><small>rango mensual estimado</small><button className="result-select" onClick={() => setSelectedCityId(result.city.id)} type="button">{selectedCityId === result.city.id ? "Ciudad activa" : "Usar en herramientas"}</button><div><button aria-label={`Guardar ${result.city.name}`} aria-pressed={favorites.includes(result.city.id)} className={favorites.includes(result.city.id) ? "active" : ""} onClick={() => onFavorite(result.city.id)}><Bookmark aria-hidden="true" size={18}/></button><button aria-label={`Comparar ${result.city.name}`} aria-pressed={compare.includes(result.city.id)} className={compare.includes(result.city.id) ? "active" : ""} onClick={() => onCompare(result.city.id)}><GitCompareArrows aria-hidden="true" size={18}/></button><button aria-label={`${rejected.includes(result.city.id) ? "Restaurar" : "Descartar"} ${result.city.name}`} aria-pressed={rejected.includes(result.city.id)} className={rejected.includes(result.city.id) ? "active" : ""} onClick={() => onReject(result.city.id)}><X aria-hidden="true" size={18}/></button><button aria-label={`Compartir ${result.city.name}`} onClick={() => { navigator.clipboard?.writeText(window.location.href); track("result_shared", { city_id: result.city.id }); }}><Share2 aria-hidden="true" size={18}/></button></div></aside>
+      <aside className="result-side"><span className={`confidence confidence--${result.confidenceLabel}`}>Confianza {result.confidenceLabel}</span><b>{result.city.costRange}</b><small>rango mensual estimado</small><button className="result-select" onClick={() => selectCity(result.city.id)} type="button">{selectedCityId === result.city.id ? "Ciudad activa" : "Usar en herramientas"}</button><div><button aria-label={`Guardar ${result.city.name}`} aria-pressed={favorites.includes(result.city.id)} className={favorites.includes(result.city.id) ? "active" : ""} onClick={() => onFavorite(result.city.id)}><Bookmark aria-hidden="true" size={18}/><span>Guardar</span></button><button aria-label={`Comparar ${result.city.name}`} aria-pressed={compare.includes(result.city.id)} className={compare.includes(result.city.id) ? "active" : ""} onClick={() => onCompare(result.city.id)}><GitCompareArrows aria-hidden="true" size={18}/><span>Comparar</span></button><button aria-label={`${rejected.includes(result.city.id) ? "Restaurar" : "Descartar"} ${result.city.name}`} aria-pressed={rejected.includes(result.city.id)} className={rejected.includes(result.city.id) ? "active" : ""} onClick={() => rejectCity(result.city.id)}><X aria-hidden="true" size={18}/><span>{rejected.includes(result.city.id) ? "Restaurar" : "Descartar"}</span></button><button aria-label={`Compartir ${result.city.name}`} onClick={() => { void shareCity(result); }}><Share2 aria-hidden="true" size={18}/><span>Compartir</span></button></div></aside>
     </article>)}
     {!showAll && <button className="button button--outline show-more" onClick={onShowAll}>Ver los 5 matches <ArrowRight aria-hidden="true" size={18}/></button>}</section></section>
-    <DecisionToolkit compared={compared} onRemoveComparison={onCompare} onSelectCity={setSelectedCityId} results={results} selectedCityId={selectedCityId}/><PostValuePanel/><footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. <Link href="/fuentes">Ver fuentes, alcance y fecha →</Link></footer>
+    <DecisionToolkit compared={compared} onRemoveComparison={onCompare} onSelectCity={selectCity} results={results} selectedCityId={selectedCityId}/>{accountsAvailable && <PostValuePanel/>}<footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. <Link href="/fuentes">Ver fuentes, alcance y fecha →</Link></footer>{notice && <div className="status-toast" role="status"><span>{notice}</span>{lastRejected && <button type="button" onClick={() => { onReject(lastRejected); setLastRejected(null); setNotice("Ciudad restaurada."); }}>Deshacer</button>}<button aria-label="Cerrar aviso" type="button" onClick={() => setNotice("")}><X aria-hidden="true" size={16}/></button></div>}
   </main>;
 }
 

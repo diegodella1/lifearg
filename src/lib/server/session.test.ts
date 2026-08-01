@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { actorId, anonymousCookie, readCookie } from "./session";
+import { actorId, anonymousCookie, rateLimitActor, readCookie } from "./session";
 
 function requestWithCookie(cookie?: string) {
   return new Request("https://lifearg.example", { headers: cookie ? { cookie } : undefined });
@@ -27,5 +27,16 @@ describe("anonymous sessions", () => {
 
     expect(actorId(requestWithCookie(`${anonymousCookie}=not-a-uuid`))).toBe(generated);
     expect(randomUUID).toHaveBeenCalledOnce();
+  });
+
+  it("uses a stable opaque limiter key before a session cookie exists", async () => {
+    const request = new Request("https://lifearg.example", { headers: { "cf-connecting-ip": "203.0.113.8", "user-agent": "test-browser" } });
+
+    const first = await rateLimitActor(request);
+    const second = await rateLimitActor(request);
+
+    expect(first).toBe(second);
+    expect(first).toMatch(/^edge:[0-9a-f]{64}$/);
+    expect(first).not.toContain("203.0.113.8");
   });
 });

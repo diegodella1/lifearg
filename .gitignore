@@ -8,3 +8,5 @@ coverage
 .open-next
 .wrangler
 cloudflare-env.d.ts
+test-results
+playwright-report

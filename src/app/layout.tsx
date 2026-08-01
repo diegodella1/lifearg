@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { DM_Sans, Fraunces } from "next/font/google";
 import "./globals.css";
+
+const bodyFont = DM_Sans({ subsets: ["latin"], variable: "--font-body", display: "swap" });
+const displayFont = Fraunces({ subsets: ["latin"], variable: "--font-display", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Life Match Argentina",
@@ -12,7 +16,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es">
+    <html className={`${bodyFont.variable} ${displayFont.variable}`} lang="es">
       <body><a className="skip-link" href="#main-content">Saltar al contenido</a>{children}</body>
     </html>
   );

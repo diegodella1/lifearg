@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronDown, GitCompareArrows, MapPin, RotateCcw, Share2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronDown, GitCompareArrows, MapPin, Menu, RotateCcw, Share2, Sparkles, X } from "lucide-react";
 import { cities, factorLabels } from "@/data/cities";
 import { rankCities } from "@/lib/matching";
 import { buildProfileFromAnswers } from "@/lib/profile";
@@ -10,8 +10,7 @@ import { readStoredJson, writeStoredJson } from "@/lib/storage";
 import type { Factor, MatchResult, QuickAnswers, RelocationTolerance, UserOrigin } from "@/lib/types";
 import Link from "next/link";
 import { ResultsMap } from "./results-map";
-import { RentalExplorer } from "./rental-explorer";
-import { TaxEstimator } from "./tax-estimator";
+import { DecisionToolkit } from "./decision-toolkit";
 
 type Stage = "landing" | "intent" | "story" | "basics" | "origin" | "priorities" | "results";
 
@@ -39,7 +38,7 @@ const initialAnswers: QuickAnswers = {
 function Choice<T extends string>({ active, value, title, detail, onChange }: { active: boolean; value: T; title: string; detail?: string; onChange: (value: T) => void }) {
   return (
     <button className={`choice ${active ? "choice--active" : ""}`} onClick={() => onChange(value)} type="button">
-      <span className="choice__mark">{active ? <Check size={15} /> : null}</span>
+      <span className="choice__mark">{active ? <Check aria-hidden="true" size={15} /> : null}</span>
       <span><strong>{title}</strong>{detail ? <small>{detail}</small> : null}</span>
     </button>
   );
@@ -71,6 +70,7 @@ export function MatcherExperience() {
   const profile = useMemo(() => buildProfileFromAnswers(answers), [answers]);
   const results = useMemo(() => rankCities(profile, cities, { origin: answers.origin, tolerance: answers.relocationTolerance }), [profile, answers.origin, answers.relocationTolerance]);
   const progress = stage === "landing" || stage === "results" ? 0 : ((stages.indexOf(stage) + 1) / stages.length) * 100;
+  const currentStep = stages.indexOf(stage) + 1;
 
   const next = () => {
     const index = stages.indexOf(stage);
@@ -155,8 +155,8 @@ export function MatcherExperience() {
   return (
     <main className="quiz-shell" id="main-content">
       <header className="quiz-header">
-        <button className="brand brand--small" onClick={() => setStage("landing")}>LM<span>·</span>AR</button>
-        <div className="progress-wrap"><span style={{ width: `${progress}%` }} /></div>
+        <button aria-label="Volver al inicio" className="brand brand--small" onClick={() => setStage("landing")}>LM<span>·</span>AR</button>
+        <div className="progress-block"><div aria-label={`Paso ${currentStep} de ${stages.length}`} aria-valuemax={stages.length} aria-valuemin={1} aria-valuenow={currentStep} className="progress-wrap" role="progressbar"><span style={{ transform: `scaleX(${progress / 100})` }} /></div><small>{currentStep} / {stages.length}</small></div>
         <span className="progress-copy">unos {Math.max(10, 50 - stages.indexOf(stage) * 12)} segundos</span>
       </header>
       <section className="quiz-card">
@@ -166,9 +166,9 @@ export function MatcherExperience() {
         {stage === "origin" && <Origin answers={answers} setAnswers={setAnswers} />}
         {stage === "priorities" && <Priorities answers={answers} setAnswers={setAnswers} />}
         <footer className="quiz-actions">
-          <button className="button button--ghost" onClick={back}><ArrowLeft size={18} /> Atrás</button>
+          <button className="button button--ghost" onClick={back}><ArrowLeft aria-hidden="true" size={18} /> Atrás</button>
           <button className="button button--primary" disabled={extracting || (stage === "origin" && Boolean(answers.origin) && !answers.relocationTolerance)} onClick={stage === "story" ? interpretStory : next}>
-            {extracting ? "Interpretando…" : stage === "priorities" ? "Ver mis ciudades" : "Continuar"} <ArrowRight size={18} />
+            {extracting ? "Interpretando…" : stage === "priorities" ? "Ver mis ciudades" : "Continuar"} <ArrowRight aria-hidden="true" size={18} />
           </button>
         </footer>
       </section>
@@ -182,16 +182,17 @@ function ConsentBanner({ onChoose }: { onChoose: (value: boolean) => void }) {
 }
 
 function Landing({ onStart }: { onStart: () => void }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <main className="landing" id="main-content">
-      <nav><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><div className="landing-links"><Link href="/como-funciona">Cómo funciona</Link><Link href="/fuentes">Fuentes</Link><Link href="/acerca-de">Acerca de</Link></div></nav>
+      <nav className="landing-nav" aria-label="Navegación principal"><span className="brand" translate="no">LIFE MATCH <i>ARGENTINA</i></span><button aria-expanded={menuOpen} aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"} className="nav-toggle" onClick={() => setMenuOpen((current) => !current)} type="button">{menuOpen ? <X aria-hidden="true" size={21}/> : <Menu aria-hidden="true" size={21}/>}</button><div className={`landing-links ${menuOpen ? "is-open" : ""}`}><Link href="/como-funciona">Cómo funciona</Link><Link href="/fuentes">Fuentes</Link><Link href="/acerca-de">Acerca de</Link><button className="button button--ink landing-links__cta" onClick={onStart} type="button">Crear mi mapa</button></div></nav>
       <section className="hero">
         <div className="hero__copy">
           <p className="eyebrow">Un atlas hecho alrededor tuyo</p>
           <h1>¿En qué ciudad argentina <em>vivirías mejor?</em></h1>
           <p className="hero__lead">Contanos qué vida querés. Te mostramos opciones reales, por qué encajan y qué tendrías que resignar.</p>
-          <button className="button button--primary button--large" onClick={onStart}>Descubrir mi match <ArrowRight size={20} /></button>
-          <span className="microcopy"><Sparkles size={15} /> 45 segundos · sin registro · 24 ciudades</span>
+          <button className="button button--primary button--large" onClick={onStart}>Descubrir mi match <ArrowRight aria-hidden="true" size={20} /></button>
+          <span className="microcopy"><Sparkles aria-hidden="true" size={15} /> 45 segundos · sin registro · 24 ciudades</span>
         </div>
         <div className="map-art" aria-hidden="true">
           <span className="map-art__label map-art__label--north">NORTE</span><span className="map-art__label map-art__label--center">CENTRO</span><span className="map-art__label map-art__label--south">PATAGONIA</span>
@@ -247,6 +248,22 @@ function Origin({ answers, setAnswers }: FormProps) {
   const [locations, setLocations] = useState<UserOrigin[]>([]);
   const [searching, setSearching] = useState(false);
   const [message, setMessage] = useState("");
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  function selectLocation(location: UserOrigin) {
+    setAnswers({ ...answers, origin: location });
+    setQuery(location.locality);
+    setLocations([]);
+    setActiveIndex(-1);
+  }
+
+  function handleLocationKeys(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (!locations.length) return;
+    if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex((current) => (current + 1) % locations.length); }
+    if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((current) => current <= 0 ? locations.length - 1 : current - 1); }
+    if (event.key === "Enter" && activeIndex >= 0) { event.preventDefault(); selectLocation(locations[activeIndex]); }
+    if (event.key === "Escape") { setLocations([]); setActiveIndex(-1); }
+  }
 
   useEffect(() => {
     if (query.trim().length < 3 || query === answers.origin?.locality) return;
@@ -257,12 +274,13 @@ function Origin({ answers, setAnswers }: FormProps) {
         const response = await fetch("/api/locations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query }), signal: controller.signal });
         if (!response.ok) throw new Error("location search failed");
         const body = await response.json() as { locations: UserOrigin[] };
-        setLocations(body.locations);
+        setLocations(body.locations); setActiveIndex(body.locations.length ? 0 : -1);
         if (!body.locations.length) setMessage("No encontramos coincidencias. Probá con otra forma del nombre.");
       } catch {
         if (!controller.signal.aborted) {
           const term = query.toLocaleLowerCase("es");
-          setLocations(cities.filter((city) => `${city.name} ${city.province}`.toLocaleLowerCase("es").includes(term)).slice(0, 8).map((city) => ({ georefId: city.georefId, locality: city.name, province: city.province, provinceId: city.georefId.slice(0, 2), coordinates: city.coordinates })));
+          const fallbackLocations = cities.filter((city) => `${city.name} ${city.province}`.toLocaleLowerCase("es").includes(term)).slice(0, 8).map((city) => ({ georefId: city.georefId, locality: city.name, province: city.province, provinceId: city.georefId.slice(0, 2), coordinates: city.coordinates }));
+          setLocations(fallbackLocations); setActiveIndex(fallbackLocations.length ? 0 : -1);
           setMessage("GeoRef no respondió. Mostramos coincidencias del catálogo.");
         }
       } finally { if (!controller.signal.aborted) setSearching(false); }
@@ -271,17 +289,17 @@ function Origin({ answers, setAnswers }: FormProps) {
   }, [query, answers.origin?.locality]);
 
   return <div><p className="step">04 — TU PUNTO DE PARTIDA</p><h2>¿Dónde vivís ahora?</h2><p className="question-note">Es opcional. Sirve para calcular distancia; la localidad queda en este dispositivo.</p>
-    <div className="location-search"><label><span>Localidad argentina</span><input aria-autocomplete="list" aria-controls="location-options" aria-expanded={locations.length > 0} autoComplete="off" onChange={(event) => { setQuery(event.target.value); setLocations([]); setMessage(""); if (answers.origin) setAnswers({ ...answers, origin: undefined, relocationTolerance: undefined }); }} placeholder="Ejemplo: Posadas, Misiones" role="combobox" value={query}/></label>{searching && <small aria-live="polite">Buscando…</small>}
-      {locations.length > 0 && <ul id="location-options" role="listbox">{locations.map((location) => <li key={location.georefId}><button type="button" onClick={() => { setAnswers({ ...answers, origin: location }); setQuery(location.locality); setLocations([]); }}><MapPin size={17}/><span><b>{location.locality}</b><small>{location.province}</small></span></button></li>)}</ul>}
+    <div className="location-search"><label><span>Localidad argentina</span><input aria-activedescendant={activeIndex >= 0 ? `location-option-${activeIndex}` : undefined} aria-autocomplete="list" aria-controls="location-options" aria-expanded={locations.length > 0} autoComplete="off" name="current_location" onChange={(event) => { setQuery(event.target.value); setLocations([]); setActiveIndex(-1); setMessage(""); if (answers.origin) setAnswers({ ...answers, origin: undefined, relocationTolerance: undefined }); }} onKeyDown={handleLocationKeys} placeholder="Ejemplo: Posadas, Misiones…" role="combobox" value={query}/></label>{searching && <small aria-live="polite">Buscando…</small>}
+      {locations.length > 0 && <ul id="location-options" role="listbox">{locations.map((location, index) => <li key={location.georefId} role="presentation"><button aria-selected={activeIndex === index} id={`location-option-${index}`} onClick={() => selectLocation(location)} onMouseMove={() => setActiveIndex(index)} role="option" type="button"><MapPin aria-hidden="true" size={17}/><span><b>{location.locality}</b><small>{location.province}</small></span></button></li>)}</ul>}
       {message && <small aria-live="polite">{message}</small>}
     </div>
-    {answers.origin && <div className="origin-confirmed"><p><MapPin size={18}/><span><b>{answers.origin.locality}</b><small>{answers.origin.province}</small></span><button type="button" onClick={() => { setAnswers({ ...answers, origin: undefined, relocationTolerance: undefined }); setQuery(""); }}>Cambiar</button></p><h3>¿Hasta dónde te mudarías?</h3><div className="choice-grid">{toleranceOptions.map((option) => <Choice active={answers.relocationTolerance === option.value} detail={option.note} key={option.value} onChange={(relocationTolerance) => setAnswers({ ...answers, relocationTolerance })} title={option.label} value={option.value}/>)}</div></div>}
+    {answers.origin && <div className="origin-confirmed"><p><MapPin aria-hidden="true" size={18}/><span><b>{answers.origin.locality}</b><small>{answers.origin.province}</small></span><button type="button" onClick={() => { setAnswers({ ...answers, origin: undefined, relocationTolerance: undefined }); setQuery(""); }}>Cambiar</button></p><h3>¿Hasta dónde te mudarías?</h3><div className="choice-grid">{toleranceOptions.map((option) => <Choice active={answers.relocationTolerance === option.value} detail={option.note} key={option.value} onChange={(relocationTolerance) => setAnswers({ ...answers, relocationTolerance })} title={option.label} value={option.value}/>)}</div></div>}
     {!answers.origin && <p className="field-hint">Podés continuar sin elegir una localidad; el ranking mantendrá sus otros factores.</p>}
   </div>;
 }
 
 function Priorities({ answers, setAnswers }: FormProps) {
-  return <div><p className="step">04 — LO QUE MÁS PESA</p><h2>Elegí hasta cuatro prioridades.</h2><div className="priority-grid">{lifestyleOptions.map((option) => <Choice key={option.value} active={answers.lifestyle.includes(option.value)} value={option.value} title={option.label} detail={option.note} onChange={(value) => setAnswers({ ...answers, lifestyle: answers.lifestyle.includes(value) ? answers.lifestyle.filter((item) => item !== value) : answers.lifestyle.length < 4 ? [...answers.lifestyle, value] : answers.lifestyle })}/>)}</div>
+  return <div><p className="step">05 — LO QUE MÁS PESA</p><h2>Elegí hasta cuatro prioridades.</h2><div className="priority-grid">{lifestyleOptions.map((option) => <Choice key={option.value} active={answers.lifestyle.includes(option.value)} value={option.value} title={option.label} detail={option.note} onChange={(value) => setAnswers({ ...answers, lifestyle: answers.lifestyle.includes(value) ? answers.lifestyle.filter((item) => item !== value) : answers.lifestyle.length < 4 ? [...answers.lifestyle, value] : answers.lifestyle })}/>)}</div>
     <p className="tradeoff-label">Si tuvieras que inclinar la balanza…</p><div className="segmented">{([['nature','Más naturaleza'],['balanced','Ambas importan'],['culture','Más ciudad']] as const).map(([value,label]) => <button type="button" key={value} className={answers.tradeoff === value ? "active" : ""} onClick={() => setAnswers({ ...answers, tradeoff: value })}>{label}</button>)}</div>
   </div>;
 }
@@ -292,37 +310,38 @@ function SelectField<T extends string>({ label, value, options, onChange }: { la
 }
 
 function Results({ results, origin, favorites, compare, rejected, expanded, showAll, onFavorite, onCompare, onReject, onExpand, onShowAll, onRefine, onReset }: { results: MatchResult[]; origin?: UserOrigin; favorites: string[]; compare: string[]; rejected: string[]; expanded: string | null; showAll: boolean; onFavorite: (id: string) => void; onCompare: (id: string) => void; onReject: (id: string) => void; onExpand: (id: string) => void; onShowAll: () => void; onRefine: () => void; onReset: () => void }) {
+  const [selectedCityId, setSelectedCityId] = useState(results[0]?.city.id ?? "");
   const visible = showAll ? results : results.slice(0, 3);
   const compared = results.filter((result) => compare.includes(result.city.id));
-  return <main className="results-page" id="main-content"><header className="results-nav"><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><div><button className="button button--ghost" onClick={onReset}><RotateCcw size={16}/> Reiniciar</button><button className="button button--ink" onClick={onRefine}>Afinar resultados</button></div></header>
+  return <main className="results-page" id="main-content"><header className="results-nav"><span className="brand" translate="no">LIFE MATCH <i>ARGENTINA</i></span><div><button className="button button--ghost" onClick={onReset}><RotateCcw aria-hidden="true" size={16}/> Reiniciar</button><button className="button button--ink" onClick={onRefine}>Afinar resultados</button></div></header>
     <section className="results-intro"><p className="eyebrow">TU MAPA POSIBLE</p><h1>Encontramos lugares<br/>que hablan tu idioma.</h1><p>El porcentaje compara tus prioridades contra el snapshot actual. Confianza indica cobertura y frescura, no certeza sobre tu futuro.</p></section>
-    <section className="results-grid"><ResultsMap origin={origin} results={results}/><section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} id={`result-${result.city.id}`} key={result.city.id}>
+    <section className="results-grid"><ResultsMap onSelectCity={setSelectedCityId} origin={origin} results={results} selectedCityId={selectedCityId}/><section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${selectedCityId === result.city.id ? "result-card--selected" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} id={`result-${result.city.id}`} key={result.city.id}>
       <div className="rank">0{result.rank}</div><div className="score"><b>{result.match}</b><span>/100<br/>MATCH</span></div>
-      <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}{result.isCurrentCity ? " · TU PUNTO DE PARTIDA" : ""}</p><h2><Link href={`/ciudades/${result.city.id}`} onClick={() => track("city_opened", { city_id: result.city.id, rank: result.rank })}>{result.city.name}</Link></h2><p>{result.city.summary}</p>{result.distanceKm !== null && <p className="distance-note"><MapPin size={15}/>{result.distanceKm.toLocaleString("es-AR")} km desde tu localidad{result.distancePenalty ? ` · −${result.distancePenalty} puntos por distancia` : " · dentro de tu rango"}</p>}<div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check size={14}/>{reason}</span>)}</div>
-        <button className="explain-toggle" onClick={() => onExpand(result.city.id)}>Cómo llegamos a este match <ChevronDown size={16}/></button>
+      <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}{result.isCurrentCity ? " · TU PUNTO DE PARTIDA" : ""}</p><h2><Link href={`/ciudades/${result.city.id}`} onClick={() => track("city_opened", { city_id: result.city.id, rank: result.rank })}>{result.city.name}</Link></h2><p>{result.city.summary}</p>{result.distanceKm !== null && <p className="distance-note"><MapPin aria-hidden="true" size={15}/>{result.distanceKm.toLocaleString("es-AR")} km desde tu localidad{result.distancePenalty ? ` · −${result.distancePenalty} puntos por distancia` : " · dentro de tu rango"}</p>}<div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check aria-hidden="true" size={14}/>{reason}</span>)}</div>
+        <button aria-expanded={expanded === result.city.id} className="explain-toggle" onClick={() => onExpand(result.city.id)}>Cómo llegamos a este match <ChevronDown aria-hidden="true" size={16}/></button>
         {expanded === result.city.id && <div className="explanation"><div className="metrics">{[...result.contributions].sort((a,b)=>b.points-a.points).slice(0,6).map((item) => <div key={item.factor}><span>{item.label}</span><i><b style={{ width: `${item.compatibility}%` }}/></i><strong>{Math.round(item.compatibility)}</strong></div>)}</div><p><b>Cuidado con:</b> {result.tradeoffs.join(" · ")}</p><small>Modelo {result.algorithmVersion} · Snapshot {result.dataSnapshotId} · Datos al {result.city.updatedAt}</small></div>}
       </div>
-      <aside className="result-side"><span className={`confidence confidence--${result.confidenceLabel}`}>Confianza {result.confidenceLabel}</span><b>{result.city.costRange}</b><small>rango mensual estimado</small><div><button aria-label="Guardar" className={favorites.includes(result.city.id) ? "active" : ""} onClick={() => onFavorite(result.city.id)}><Bookmark size={18}/></button><button aria-label="Comparar" className={compare.includes(result.city.id) ? "active" : ""} onClick={() => onCompare(result.city.id)}><GitCompareArrows size={18}/></button><button aria-label="Descartar" className={rejected.includes(result.city.id) ? "active" : ""} onClick={() => onReject(result.city.id)}><X size={18}/></button><button aria-label="Compartir" onClick={() => { navigator.clipboard?.writeText(window.location.href); track("result_shared", { city_id: result.city.id }); }}><Share2 size={18}/></button></div></aside>
+      <aside className="result-side"><span className={`confidence confidence--${result.confidenceLabel}`}>Confianza {result.confidenceLabel}</span><b>{result.city.costRange}</b><small>rango mensual estimado</small><button className="result-select" onClick={() => setSelectedCityId(result.city.id)} type="button">{selectedCityId === result.city.id ? "Ciudad activa" : "Usar en herramientas"}</button><div><button aria-label={`Guardar ${result.city.name}`} aria-pressed={favorites.includes(result.city.id)} className={favorites.includes(result.city.id) ? "active" : ""} onClick={() => onFavorite(result.city.id)}><Bookmark aria-hidden="true" size={18}/></button><button aria-label={`Comparar ${result.city.name}`} aria-pressed={compare.includes(result.city.id)} className={compare.includes(result.city.id) ? "active" : ""} onClick={() => onCompare(result.city.id)}><GitCompareArrows aria-hidden="true" size={18}/></button><button aria-label={`${rejected.includes(result.city.id) ? "Restaurar" : "Descartar"} ${result.city.name}`} aria-pressed={rejected.includes(result.city.id)} className={rejected.includes(result.city.id) ? "active" : ""} onClick={() => onReject(result.city.id)}><X aria-hidden="true" size={18}/></button><button aria-label={`Compartir ${result.city.name}`} onClick={() => { navigator.clipboard?.writeText(window.location.href); track("result_shared", { city_id: result.city.id }); }}><Share2 aria-hidden="true" size={18}/></button></div></aside>
     </article>)}
-    {!showAll && <button className="button button--outline show-more" onClick={onShowAll}>Ver los 5 matches <ArrowRight size={18}/></button>}</section></section>
-    <RentalExplorer results={results}/><TaxEstimator results={results}/>{compared.length > 0 && <CompareTray results={compared} onRemove={onCompare}/>}<PostValuePanel/><footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. <Link href="/fuentes">Ver fuentes, alcance y fecha →</Link></footer>
+    {!showAll && <button className="button button--outline show-more" onClick={onShowAll}>Ver los 5 matches <ArrowRight aria-hidden="true" size={18}/></button>}</section></section>
+    <DecisionToolkit compared={compared} onRemoveComparison={onCompare} onSelectCity={setSelectedCityId} results={results} selectedCityId={selectedCityId}/><PostValuePanel/><footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. <Link href="/fuentes">Ver fuentes, alcance y fecha →</Link></footer>
   </main>;
 }
 
 function PostValuePanel() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   async function submit(event: React.FormEvent) {
-    event.preventDefault(); setMessage("Enviando…");
-    const response = await fetch("/api/auth/magic-link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) });
-    const body = await response.json() as { error?: string | { message?: string } };
-    const errorMessage = typeof body.error === "string" ? body.error : body.error?.message;
-    setMessage(response.ok ? "Revisá tu email para sincronizar." : errorMessage ?? "No pudimos enviar el enlace. Reintentá.");
-    if (response.ok) track("email_capture_submitted", { benefit: "sync" });
+    event.preventDefault(); setMessage("Enviando…"); setSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/magic-link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) });
+      const body = await response.json() as { error?: string | { message?: string } };
+      const errorMessage = typeof body.error === "string" ? body.error : body.error?.message;
+      setMessage(response.ok ? "Revisá tu email para sincronizar." : errorMessage ?? "No pudimos enviar el enlace. Reintentá.");
+      if (response.ok) track("email_capture_submitted", { benefit: "sync" });
+    } catch { setMessage("No pudimos enviar el enlace. Revisá tu conexión y reintentá."); }
+    finally { setSubmitting(false); }
   }
-  return <section className="post-value"><div><p className="eyebrow">SEGUÍ EXPLORANDO</p><h2>Guardá tu mapa entre dispositivos.</h2><p>Opcional. Tus resultados ya están disponibles sin cuenta.</p></div><form onSubmit={submit}><input aria-label="Email" autoComplete="email" name="email" required spellCheck={false} type="email" value={email} onChange={(event)=>setEmail(event.target.value)} placeholder="vos@ejemplo.com"/><button className="button button--primary" type="submit">Enviar enlace</button><small aria-live="polite">{message}</small></form><div className="feedback"><span>¿Estos matches te resultaron relevantes?</span><button type="button" onClick={()=>track("match_feedback_submitted",{relevance:5})}>Sí</button><button type="button" onClick={()=>track("match_feedback_submitted",{relevance:1})}>Todavía no</button></div></section>;
-}
-
-function CompareTray({ results, onRemove }: { results: MatchResult[]; onRemove: (id: string) => void }) {
-  return <section className="compare-tray"><header><div><span>COMPARADOR</span><b>{results.length} de 3 ciudades</b></div><small>Elegí hasta tres resultados</small></header><div className="compare-grid">{results.map((result) => <article key={result.city.id}><button aria-label={`Quitar ${result.city.name} de la comparación`} type="button" onClick={() => onRemove(result.city.id)}><X aria-hidden="true" size={16}/></button><h3>{result.city.name}</h3><strong>{result.match}<small>/100</small></strong><p>{result.city.costRange}</p><dl><div><dt>Naturaleza</dt><dd>{result.city.metrics.nature}</dd></div><div><dt>Servicios</dt><dd>{result.city.metrics.services}</dd></div><div><dt>Caminable</dt><dd>{result.city.metrics.walkability}</dd></div></dl></article>)}</div></section>;
+  return <section className="post-value"><div><p className="eyebrow">SEGUÍ EXPLORANDO</p><h2>Guardá tu mapa entre dispositivos.</h2><p>Opcional. Tus resultados ya están disponibles sin cuenta.</p></div><form onSubmit={submit}><input aria-label="Email" autoComplete="email" name="email" required spellCheck={false} type="email" value={email} onChange={(event)=>setEmail(event.target.value)} placeholder="vos@ejemplo.com…"/><button className="button button--primary" disabled={submitting} type="submit">{submitting ? "Enviando…" : "Enviar enlace"}</button><small aria-live="polite">{message}</small></form><div className="feedback"><span>¿Estos matches te resultaron relevantes?</span><button type="button" onClick={()=>track("match_feedback_submitted",{relevance:5})}>Sí</button><button type="button" onClick={()=>track("match_feedback_submitted",{relevance:1})}>Todavía no</button></div></section>;
 }

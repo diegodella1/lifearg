@@ -15,6 +15,7 @@
     "test:e2e:update": "playwright test --update-snapshots",
     "check": "npm run lint && npm run typecheck && npm test && npm run data:validate",
     "data:validate": "node scripts/validate-data.mjs",
+    "build:cloudflare:next": "next build && node scripts/ensure-standalone-instrumentation.mjs",
     "preview:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"

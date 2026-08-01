@@ -33,3 +33,20 @@ export const extractionSchema = z.object({
     confidence: z.number().min(0).max(1),
   })).max(8),
 });
+
+export const preferenceProfileV2Schema = z.object({
+  intent: z.enum(["exploring", "this_year", "leaving", "comparing"]),
+  work: z.object({ mode: z.enum(["remote", "hybrid", "onsite", "not_working"]), internetCriticality: z.number().int().min(0).max(5) }),
+  household: z.object({ adultsRange: z.enum(["1", "2", "3_plus"]), children: z.enum(["none", "current", "planned", "prefer_not"]) }),
+  budget: z.object({ currency: z.enum(["ARS", "USD"]), monthlyRangeId: z.enum(["low", "medium", "high", "flexible"]), hardLimit: z.boolean() }),
+  mobility: z.object({ hasCar: z.enum(["yes", "no", "sometimes"]), avoidCarDependency: z.number().int().min(0).max(5), airportImportance: z.number().int().min(0).max(5) }),
+  preferences: z.array(z.object({
+    factor: factorSchema,
+    value: z.union([z.string().max(80), z.number().finite(), z.boolean()]),
+    weight: z.number().int().min(0).max(5),
+    hardConstraint: z.boolean(),
+    origin: z.enum(["tap", "text", "tradeoff"]),
+    extractionConfidence: z.number().min(0).max(1),
+    confirmed: z.boolean(),
+  })).max(20),
+});

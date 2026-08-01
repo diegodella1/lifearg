@@ -1,4 +1,5 @@
 import type { City, FactorScores } from "@/lib/types";
+import { factorSourceIds } from "./sources";
 
 const confidence = { sourceQuality: 82, freshness: 72, coverage: 92, geographicFit: 84 };
 
@@ -13,7 +14,7 @@ function city(
   summary: string,
   metrics: FactorScores,
 ): City {
-  return { id, name, province, region, archetype, populationLabel, costRange, summary, metrics, confidence, updatedAt: "2026-07-31" };
+  return { id, name, province, region, archetype, populationLabel, costRange, summary, metrics, confidence, updatedAt: "2026-07-31", sourceIds: factorSourceIds };
 }
 
 // Snapshot editorial v1. Los índices son comparativos dentro del universo MVP (0–100), no estadísticas absolutas.

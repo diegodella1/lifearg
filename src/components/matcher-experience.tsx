@@ -5,8 +5,10 @@ import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronDown, GitCompareArrows, 
 import { cities, factorLabels } from "@/data/cities";
 import { rankCities } from "@/lib/matching";
 import { buildProfileFromAnswers } from "@/lib/profile";
-import { clearLocalData, track } from "@/lib/analytics";
+import { analyticsConsent, clearLocalData, setAnalyticsConsent, track } from "@/lib/analytics";
+import { readStoredJson, writeStoredJson } from "@/lib/storage";
 import type { Factor, MatchResult, QuickAnswers } from "@/lib/types";
+import Link from "next/link";
 
 type Stage = "landing" | "intent" | "story" | "basics" | "priorities" | "results";
 
@@ -50,11 +52,17 @@ export function MatcherExperience() {
   const [showAll, setShowAll] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [chips, setChips] = useState<Factor[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [consent, setConsent] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("life-match:favorites");
-    if (saved) setFavorites(JSON.parse(saved));
+    const frame = window.requestAnimationFrame(() => {
+      setFavorites(readStoredJson<string[]>("life-match:favorites", []));
+      setSessionId(readStoredJson<string | null>("life-match:session-id", null));
+      setConsent(analyticsConsent());
+    });
     track("landing_viewed");
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const profile = useMemo(() => buildProfileFromAnswers(answers), [answers]);
@@ -68,6 +76,7 @@ export function MatcherExperience() {
     else {
       track("onboarding_completed");
       track("recommendations_generated", { count: 5, algorithm_version: "rules-v1.0.0" });
+      void fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sessionId ? { sessionId, profile } : profile) }).catch(() => undefined);
       setStage("results");
     }
   };
@@ -96,7 +105,7 @@ export function MatcherExperience() {
   function toggleFavorite(id: string) {
     setFavorites((current) => {
       const nextValue = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
-      window.localStorage.setItem("life-match:favorites", JSON.stringify(nextValue));
+      writeStoredJson("life-match:favorites", nextValue);
       track(current.includes(id) ? "city_unsaved" : "city_saved", { city_id: id });
       return nextValue;
     });
@@ -107,7 +116,20 @@ export function MatcherExperience() {
     setCompare((current) => current.includes(id) ? current.filter((item) => item !== id) : current.length < 3 ? [...current, id] : current);
   }
 
-  if (stage === "landing") return <Landing onStart={() => { track("onboarding_started"); setStage("intent"); }} />;
+  async function startOnboarding() {
+    track("onboarding_started");
+    setStage("intent");
+    if (sessionId) return;
+    try {
+      const response = await fetch("/api/sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: answers.intent }) });
+      if (!response.ok) return;
+      const body = await response.json() as { sessionId: string };
+      setSessionId(body.sessionId);
+      writeStoredJson("life-match:session-id", body.sessionId);
+    } catch { /* Offline onboarding remains available. */ }
+  }
+
+  if (stage === "landing") return <><Landing onStart={() => { void startOnboarding(); }} />{consent === null && <ConsentBanner onChoose={(value) => { setAnalyticsConsent(value); setConsent(value); }} />}</>;
   if (stage === "results") return (
     <Results
       results={results}
@@ -127,7 +149,7 @@ export function MatcherExperience() {
   );
 
   return (
-    <main className="quiz-shell">
+    <main className="quiz-shell" id="main-content">
       <header className="quiz-header">
         <button className="brand brand--small" onClick={() => setStage("landing")}>LM<span>·</span>AR</button>
         <div className="progress-wrap"><span style={{ width: `${progress}%` }} /></div>
@@ -150,10 +172,14 @@ export function MatcherExperience() {
   );
 }
 
+function ConsentBanner({ onChoose }: { onChoose: (value: boolean) => void }) {
+  return <aside className="consent-banner" aria-label="Preferencias de privacidad"><div><b>Medición opcional</b><p>Podemos guardar acciones anónimas para mejorar matches. Nunca enviamos texto libre ni email.</p></div><button className="button button--ghost" type="button" onClick={() => onChoose(false)}>Sólo esencial</button><button className="button button--ink" type="button" onClick={() => onChoose(true)}>Ayudar a mejorar</button></aside>;
+}
+
 function Landing({ onStart }: { onStart: () => void }) {
   return (
-    <main className="landing">
-      <nav><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><a href="#method">Cómo funciona</a></nav>
+    <main className="landing" id="main-content">
+      <nav><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><div className="landing-links"><Link href="/como-funciona">Cómo funciona</Link><Link href="/fuentes">Fuentes</Link><Link href="/acerca-de">Acerca de</Link></div></nav>
       <section className="hero">
         <div className="hero__copy">
           <p className="eyebrow">Un atlas hecho alrededor tuyo</p>
@@ -189,7 +215,7 @@ function Intent({ answers, setAnswers }: FormProps) {
 
 function Story({ answers, setAnswers, chips }: FormProps & { chips: Factor[] }) {
   return <div><p className="step">02 — LA VIDA QUE QUERÉS</p><h2>Imaginá un buen martes.</h2><p className="question-note">¿Qué pasa alrededor tuyo? ¿Qué no puede faltar? Podés saltear este paso.</p>
-    <textarea className="story-input" value={answers.narrative} maxLength={1000} onChange={(event) => setAnswers({ ...answers, narrative: event.target.value })} placeholder="Trabajo desde casa, salgo a caminar con mi perro, quiero verde cerca y un lugar donde cenar sin manejar…" />
+    <textarea aria-label="Descripción de la vida que buscás" autoComplete="off" className="story-input" name="lifestyle_story" value={answers.narrative} maxLength={1000} onChange={(event) => setAnswers({ ...answers, narrative: event.target.value })} placeholder="Ejemplo: trabajo desde casa, camino con mi perro y quiero verde cerca…" />
     {chips.length > 0 && <div className="chips">{chips.map((factor) => <span key={factor}>{factorLabels[factor]}</span>)}</div>}
     <p className="field-hint">La descripción se procesa y descarta. Nunca inferimos datos sensibles.</p>
   </div>;
@@ -206,30 +232,30 @@ function Basics({ answers, setAnswers }: FormProps) {
 
 function Priorities({ answers, setAnswers }: FormProps) {
   return <div><p className="step">04 — LO QUE MÁS PESA</p><h2>Elegí hasta cuatro prioridades.</h2><div className="priority-grid">{lifestyleOptions.map((option) => <Choice key={option.value} active={answers.lifestyle.includes(option.value)} value={option.value} title={option.label} detail={option.note} onChange={(value) => setAnswers({ ...answers, lifestyle: answers.lifestyle.includes(value) ? answers.lifestyle.filter((item) => item !== value) : answers.lifestyle.length < 4 ? [...answers.lifestyle, value] : answers.lifestyle })}/>)}</div>
-    <p className="tradeoff-label">Si tuvieras que inclinar la balanza…</p><div className="segmented">{([['nature','Más naturaleza'],['balanced','Ambas importan'],['culture','Más ciudad']] as const).map(([value,label]) => <button key={value} className={answers.tradeoff === value ? "active" : ""} onClick={() => setAnswers({ ...answers, tradeoff: value })}>{label}</button>)}</div>
+    <p className="tradeoff-label">Si tuvieras que inclinar la balanza…</p><div className="segmented">{([['nature','Más naturaleza'],['balanced','Ambas importan'],['culture','Más ciudad']] as const).map(([value,label]) => <button type="button" key={value} className={answers.tradeoff === value ? "active" : ""} onClick={() => setAnswers({ ...answers, tradeoff: value })}>{label}</button>)}</div>
   </div>;
 }
 
 type FormProps = { answers: QuickAnswers; setAnswers: (answers: QuickAnswers) => void };
 function SelectField<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly (readonly [T,string])[]; onChange: (value: T) => void }) {
-  return <label className="select-field"><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map(([id,text]) => <option key={id} value={id}>{text}</option>)}</select><ChevronDown size={18}/></label>;
+  return <label className="select-field"><span>{label}</span><select name={label.toLocaleLowerCase("es").replaceAll(" ", "_")} value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map(([id,text]) => <option key={id} value={id}>{text}</option>)}</select><ChevronDown aria-hidden="true" size={18}/></label>;
 }
 
 function Results({ results, favorites, compare, rejected, expanded, showAll, onFavorite, onCompare, onReject, onExpand, onShowAll, onRefine, onReset }: { results: MatchResult[]; favorites: string[]; compare: string[]; rejected: string[]; expanded: string | null; showAll: boolean; onFavorite: (id: string) => void; onCompare: (id: string) => void; onReject: (id: string) => void; onExpand: (id: string) => void; onShowAll: () => void; onRefine: () => void; onReset: () => void }) {
   const visible = showAll ? results : results.slice(0, 3);
   const compared = results.filter((result) => compare.includes(result.city.id));
-  return <main className="results-page"><header className="results-nav"><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><div><button className="button button--ghost" onClick={onReset}><RotateCcw size={16}/> Reiniciar</button><button className="button button--ink" onClick={onRefine}>Afinar resultados</button></div></header>
+  return <main className="results-page" id="main-content"><header className="results-nav"><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><div><button className="button button--ghost" onClick={onReset}><RotateCcw size={16}/> Reiniciar</button><button className="button button--ink" onClick={onRefine}>Afinar resultados</button></div></header>
     <section className="results-intro"><p className="eyebrow">TU MAPA POSIBLE</p><h1>Encontramos lugares<br/>que hablan tu idioma.</h1><p>El porcentaje compara tus prioridades contra el snapshot actual. Confianza indica cobertura y frescura, no certeza sobre tu futuro.</p></section>
     <section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} key={result.city.id}>
       <div className="rank">0{result.rank}</div><div className="score"><b>{result.match}</b><span>/100<br/>MATCH</span></div>
-      <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}</p><h2>{result.city.name}</h2><p>{result.city.summary}</p><div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check size={14}/>{reason}</span>)}</div>
+      <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}</p><h2><Link href={`/ciudades/${result.city.id}`} onClick={() => track("city_opened", { city_id: result.city.id, rank: result.rank })}>{result.city.name}</Link></h2><p>{result.city.summary}</p><div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check size={14}/>{reason}</span>)}</div>
         <button className="explain-toggle" onClick={() => onExpand(result.city.id)}>Cómo llegamos a este match <ChevronDown size={16}/></button>
         {expanded === result.city.id && <div className="explanation"><div className="metrics">{[...result.contributions].sort((a,b)=>b.points-a.points).slice(0,6).map((item) => <div key={item.factor}><span>{item.label}</span><i><b style={{ width: `${item.compatibility}%` }}/></i><strong>{Math.round(item.compatibility)}</strong></div>)}</div><p><b>Cuidado con:</b> {result.tradeoffs.join(" · ")}</p><small>Modelo {result.algorithmVersion} · Snapshot {result.dataSnapshotId} · Datos al {result.city.updatedAt}</small></div>}
       </div>
       <aside className="result-side"><span className={`confidence confidence--${result.confidenceLabel}`}>Confianza {result.confidenceLabel}</span><b>{result.city.costRange}</b><small>rango mensual estimado</small><div><button aria-label="Guardar" className={favorites.includes(result.city.id) ? "active" : ""} onClick={() => onFavorite(result.city.id)}><Bookmark size={18}/></button><button aria-label="Comparar" className={compare.includes(result.city.id) ? "active" : ""} onClick={() => onCompare(result.city.id)}><GitCompareArrows size={18}/></button><button aria-label="Descartar" className={rejected.includes(result.city.id) ? "active" : ""} onClick={() => onReject(result.city.id)}><X size={18}/></button><button aria-label="Compartir" onClick={() => { navigator.clipboard?.writeText(window.location.href); track("result_shared", { city_id: result.city.id }); }}><Share2 size={18}/></button></div></aside>
     </article>)}
     {!showAll && <button className="button button--outline show-more" onClick={onShowAll}>Ver los 5 matches <ArrowRight size={18}/></button>}</section>
-    {compared.length > 0 && <CompareTray results={compared} onRemove={onCompare}/>}<PostValuePanel/><footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. Cada señal muestra alcance y fecha.</footer>
+    {compared.length > 0 && <CompareTray results={compared} onRemove={onCompare}/>}<PostValuePanel/><footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. <Link href="/fuentes">Ver fuentes, alcance y fecha →</Link></footer>
   </main>;
 }
 
@@ -239,13 +265,14 @@ function PostValuePanel() {
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setMessage("Enviando…");
     const response = await fetch("/api/auth/magic-link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) });
-    const body = await response.json();
-    setMessage(response.ok ? "Revisá tu email para sincronizar." : body.error);
+    const body = await response.json() as { error?: string | { message?: string } };
+    const errorMessage = typeof body.error === "string" ? body.error : body.error?.message;
+    setMessage(response.ok ? "Revisá tu email para sincronizar." : errorMessage ?? "No pudimos enviar el enlace. Reintentá.");
     if (response.ok) track("email_capture_submitted", { benefit: "sync" });
   }
-  return <section className="post-value"><div><p className="eyebrow">SEGUÍ EXPLORANDO</p><h2>Guardá tu mapa entre dispositivos.</h2><p>Opcional. Tus resultados ya están disponibles sin cuenta.</p></div><form onSubmit={submit}><input aria-label="Email" required type="email" value={email} onChange={(event)=>setEmail(event.target.value)} placeholder="vos@ejemplo.com"/><button className="button button--primary">Enviar enlace</button><small>{message}</small></form><div className="feedback"><span>¿Estos matches te resultaron relevantes?</span><button onClick={()=>track("match_feedback_submitted",{relevance:5})}>Sí</button><button onClick={()=>track("match_feedback_submitted",{relevance:1})}>Todavía no</button></div></section>;
+  return <section className="post-value"><div><p className="eyebrow">SEGUÍ EXPLORANDO</p><h2>Guardá tu mapa entre dispositivos.</h2><p>Opcional. Tus resultados ya están disponibles sin cuenta.</p></div><form onSubmit={submit}><input aria-label="Email" autoComplete="email" name="email" required spellCheck={false} type="email" value={email} onChange={(event)=>setEmail(event.target.value)} placeholder="vos@ejemplo.com"/><button className="button button--primary" type="submit">Enviar enlace</button><small aria-live="polite">{message}</small></form><div className="feedback"><span>¿Estos matches te resultaron relevantes?</span><button type="button" onClick={()=>track("match_feedback_submitted",{relevance:5})}>Sí</button><button type="button" onClick={()=>track("match_feedback_submitted",{relevance:1})}>Todavía no</button></div></section>;
 }
 
 function CompareTray({ results, onRemove }: { results: MatchResult[]; onRemove: (id: string) => void }) {
-  return <section className="compare-tray"><header><div><span>COMPARADOR</span><b>{results.length} de 3 ciudades</b></div><small>Elegí hasta tres resultados</small></header><div className="compare-grid">{results.map((result) => <article key={result.city.id}><button onClick={() => onRemove(result.city.id)}><X size={16}/></button><h3>{result.city.name}</h3><strong>{result.match}<small>/100</small></strong><p>{result.city.costRange}</p><dl><div><dt>Naturaleza</dt><dd>{result.city.metrics.nature}</dd></div><div><dt>Servicios</dt><dd>{result.city.metrics.services}</dd></div><div><dt>Caminable</dt><dd>{result.city.metrics.walkability}</dd></div></dl></article>)}</div></section>;
+  return <section className="compare-tray"><header><div><span>COMPARADOR</span><b>{results.length} de 3 ciudades</b></div><small>Elegí hasta tres resultados</small></header><div className="compare-grid">{results.map((result) => <article key={result.city.id}><button aria-label={`Quitar ${result.city.name} de la comparación`} type="button" onClick={() => onRemove(result.city.id)}><X aria-hidden="true" size={16}/></button><h3>{result.city.name}</h3><strong>{result.match}<small>/100</small></strong><p>{result.city.costRange}</p><dl><div><dt>Naturaleza</dt><dd>{result.city.metrics.nature}</dd></div><div><dt>Servicios</dt><dd>{result.city.metrics.services}</dd></div><div><dt>Caminable</dt><dd>{result.city.metrics.walkability}</dd></div></dl></article>)}</div></section>;
 }

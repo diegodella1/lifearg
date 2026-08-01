@@ -54,6 +54,17 @@ No afirmar seguridad, calidad domiciliaria de internet ni disponibilidad futura.
 5. Configurar Sentry, backups y prueba de restauración.
 6. Ejecutar revisión legal/licencias y evaluación de 30 perfiles antes de activar marketing.
 
+## Cloudflare Workers
+
+El despliegue productivo usa OpenNext y el Custom Domain `lifearg.diegodella.ar`:
+
+```bash
+npm run preview:cloudflare
+npm run deploy:cloudflare
+```
+
+`wrangler.jsonc` habilita `nodejs_compat`, assets estáticos, observabilidad y TLS/DNS automático mediante Custom Domain. Para rollback: `npx wrangler rollback`.
+
 ## Privacidad
 
 Texto libre se procesa y descarta. `Reiniciar` elimina favoritos y eventos locales. La migración separa cuenta/PII de recomendaciones y activa RLS para datos privados. Producción debe completar consentimiento versionado, exportación y borrado dentro del procedimiento legal definido.

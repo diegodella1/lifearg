@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { readStoredJson } from "@/lib/storage";
 
 type EventRecord = { event: string };
 
 export function LocalFunnel() {
   const [events, setEvents] = useState<EventRecord[]>([]);
   useEffect(() => {
-    setEvents(JSON.parse(window.localStorage.getItem("life-match:events") ?? "[]"));
+    const frame = window.requestAnimationFrame(() => setEvents(readStoredJson<EventRecord[]>("life-match:events", [])));
+    return () => window.cancelAnimationFrame(frame);
   }, []);
   const count = (name: string) => events.filter((event) => event.event === name).length;
   const generated = count("recommendations_generated");

@@ -2,9 +2,9 @@ import { factorLabels } from "@/data/cities";
 import { FACTORS, type City, type Contribution, type Factor, type MatchResult, type UserProfile } from "./types";
 
 function budgetCompatibility(profile: UserProfile, city: City): number {
-  if (profile.budget === "flexible") return city.metrics.affordability;
-  const ideal = profile.budget === "low" ? 90 : profile.budget === "medium" ? 65 : 35;
-  return Math.max(0, 100 - Math.abs(city.metrics.affordability - ideal) * 1.35);
+  if (profile.budget === "flexible") return 100;
+  const minimum = profile.budget === "low" ? 70 : profile.budget === "medium" ? 45 : 20;
+  return city.metrics.affordability >= minimum ? 100 : Math.max(0, 100 - (minimum - city.metrics.affordability) * 3);
 }
 
 function confidenceFor(city: City): number {

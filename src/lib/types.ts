@@ -40,6 +40,28 @@ export type City = {
     geographicFit: number;
   };
   updatedAt: string;
+  sourceIds: Partial<Record<Factor, string[]>>;
+};
+
+export type PreferenceValue = string | number | boolean;
+
+export type ConfirmedPreference = {
+  factor: Factor;
+  value: PreferenceValue;
+  weight: number;
+  hardConstraint: boolean;
+  origin: "tap" | "text" | "tradeoff";
+  extractionConfidence: number;
+  confirmed: boolean;
+};
+
+export type PreferenceProfileV2 = {
+  intent: UserProfile["intent"];
+  work: { mode: UserProfile["workMode"]; internetCriticality: number };
+  household: { adultsRange: "1" | "2" | "3_plus"; children: "none" | "current" | "planned" | "prefer_not" };
+  budget: { currency: "ARS" | "USD"; monthlyRangeId: "low" | "medium" | "high" | "flexible"; hardLimit: boolean };
+  mobility: { hasCar: UserProfile["car"]; avoidCarDependency: number; airportImportance: number };
+  preferences: ConfirmedPreference[];
 };
 
 export type Contribution = {

@@ -1,0 +1,251 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronDown, GitCompareArrows, MapPin, RotateCcw, Share2, Sparkles, X } from "lucide-react";
+import { cities, factorLabels } from "@/data/cities";
+import { rankCities } from "@/lib/matching";
+import { buildProfileFromAnswers } from "@/lib/profile";
+import { clearLocalData, track } from "@/lib/analytics";
+import type { Factor, MatchResult, QuickAnswers } from "@/lib/types";
+
+type Stage = "landing" | "intent" | "story" | "basics" | "priorities" | "results";
+
+const stages: Stage[] = ["intent", "story", "basics", "priorities"];
+const lifestyleOptions: Array<{ value: QuickAnswers["lifestyle"][number]; label: string; note: string }> = [
+  { value: "nature", label: "Naturaleza cerca", note: "verde, agua o montaña" },
+  { value: "walkability", label: "Moverme a pie", note: "menos dependencia del auto" },
+  { value: "tranquility", label: "Ritmo tranquilo", note: "menos fricción cotidiana" },
+  { value: "culture", label: "Vida cultural", note: "salidas, gastronomía y agenda" },
+  { value: "services", label: "Servicios completos", note: "salud, educación y comercios" },
+  { value: "climate", label: "Clima amable", note: "temperaturas moderadas" },
+];
+
+const initialAnswers: QuickAnswers = {
+  intent: "exploring",
+  workMode: "remote",
+  budget: "medium",
+  household: "couple",
+  car: "sometimes",
+  lifestyle: ["nature", "tranquility"],
+  tradeoff: "balanced",
+  narrative: "",
+};
+
+function Choice<T extends string>({ active, value, title, detail, onChange }: { active: boolean; value: T; title: string; detail?: string; onChange: (value: T) => void }) {
+  return (
+    <button className={`choice ${active ? "choice--active" : ""}`} onClick={() => onChange(value)} type="button">
+      <span className="choice__mark">{active ? <Check size={15} /> : null}</span>
+      <span><strong>{title}</strong>{detail ? <small>{detail}</small> : null}</span>
+    </button>
+  );
+}
+
+export function MatcherExperience() {
+  const [stage, setStage] = useState<Stage>("landing");
+  const [answers, setAnswers] = useState(initialAnswers);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [compare, setCompare] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [rejected, setRejected] = useState<string[]>([]);
+  const [showAll, setShowAll] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [chips, setChips] = useState<Factor[]>([]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("life-match:favorites");
+    if (saved) setFavorites(JSON.parse(saved));
+    track("landing_viewed");
+  }, []);
+
+  const profile = useMemo(() => buildProfileFromAnswers(answers), [answers]);
+  const results = useMemo(() => rankCities(profile, cities), [profile]);
+  const progress = stage === "landing" || stage === "results" ? 0 : ((stages.indexOf(stage) + 1) / stages.length) * 100;
+
+  const next = () => {
+    const index = stages.indexOf(stage);
+    track("question_answered", { step: stage });
+    if (index < stages.length - 1) setStage(stages[index + 1]);
+    else {
+      track("onboarding_completed");
+      track("recommendations_generated", { count: 5, algorithm_version: "rules-v1.0.0" });
+      setStage("results");
+    }
+  };
+  const back = () => {
+    const index = stages.indexOf(stage);
+    setStage(index <= 0 ? "landing" : stages[index - 1]);
+  };
+
+  async function interpretStory() {
+    if (!answers.narrative?.trim()) return next();
+    track("free_text_submitted", { char_bucket: answers.narrative.length < 100 ? "short" : "long" });
+    setExtracting(true);
+    try {
+      const response = await fetch("/api/preferences/extract", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: answers.narrative }) });
+      const data = await response.json();
+      const extracted = (data.preferences ?? []).filter((item: { confidence: number }) => item.confidence >= 0.6).map((item: { factor: Factor }) => item.factor);
+      setChips(extracted);
+      const lifestyle = extracted.filter((factor: Factor) => ["nature", "culture", "walkability", "tranquility", "climate", "services"].includes(factor));
+      setAnswers((current) => ({ ...current, lifestyle: [...new Set([...current.lifestyle, ...lifestyle])] as QuickAnswers["lifestyle"] }));
+    } finally {
+      setExtracting(false);
+      next();
+    }
+  }
+
+  function toggleFavorite(id: string) {
+    setFavorites((current) => {
+      const nextValue = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      window.localStorage.setItem("life-match:favorites", JSON.stringify(nextValue));
+      track(current.includes(id) ? "city_unsaved" : "city_saved", { city_id: id });
+      return nextValue;
+    });
+  }
+
+  function toggleCompare(id: string) {
+    track("comparison_city_added", { city_id: id });
+    setCompare((current) => current.includes(id) ? current.filter((item) => item !== id) : current.length < 3 ? [...current, id] : current);
+  }
+
+  if (stage === "landing") return <Landing onStart={() => { track("onboarding_started"); setStage("intent"); }} />;
+  if (stage === "results") return (
+    <Results
+      results={results}
+      favorites={favorites}
+      compare={compare}
+      expanded={expanded}
+      showAll={showAll}
+      onFavorite={toggleFavorite}
+      onCompare={toggleCompare}
+      rejected={rejected}
+      onReject={(id) => { setRejected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); track("city_rejected", { city_id: id, reason_code: "not_for_me" }); }}
+      onExpand={(id) => setExpanded(expanded === id ? null : id)}
+      onShowAll={() => setShowAll(true)}
+      onRefine={() => setStage("priorities")}
+      onReset={() => { clearLocalData(); setAnswers(initialAnswers); setFavorites([]); setCompare([]); setStage("landing"); }}
+    />
+  );
+
+  return (
+    <main className="quiz-shell">
+      <header className="quiz-header">
+        <button className="brand brand--small" onClick={() => setStage("landing")}>LM<span>·</span>AR</button>
+        <div className="progress-wrap"><span style={{ width: `${progress}%` }} /></div>
+        <span className="progress-copy">unos {Math.max(10, 50 - stages.indexOf(stage) * 12)} segundos</span>
+      </header>
+      <section className="quiz-card">
+        {stage === "intent" && <Intent answers={answers} setAnswers={setAnswers} />}
+        {stage === "story" && <Story answers={answers} setAnswers={setAnswers} chips={chips} />}
+        {stage === "basics" && <Basics answers={answers} setAnswers={setAnswers} />}
+        {stage === "priorities" && <Priorities answers={answers} setAnswers={setAnswers} />}
+        <footer className="quiz-actions">
+          <button className="button button--ghost" onClick={back}><ArrowLeft size={18} /> Atrás</button>
+          <button className="button button--primary" disabled={extracting} onClick={stage === "story" ? interpretStory : next}>
+            {extracting ? "Interpretando…" : stage === "priorities" ? "Ver mis ciudades" : "Continuar"} <ArrowRight size={18} />
+          </button>
+        </footer>
+      </section>
+      <p className="privacy-note">Tus respuestas quedan en este dispositivo. Sin registro.</p>
+    </main>
+  );
+}
+
+function Landing({ onStart }: { onStart: () => void }) {
+  return (
+    <main className="landing">
+      <nav><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><a href="#method">Cómo funciona</a></nav>
+      <section className="hero">
+        <div className="hero__copy">
+          <p className="eyebrow">Un atlas hecho alrededor tuyo</p>
+          <h1>¿En qué ciudad argentina <em>vivirías mejor?</em></h1>
+          <p className="hero__lead">Contanos qué vida querés. Te mostramos opciones reales, por qué encajan y qué tendrías que resignar.</p>
+          <button className="button button--primary button--large" onClick={onStart}>Descubrir mi match <ArrowRight size={20} /></button>
+          <span className="microcopy"><Sparkles size={15} /> 45 segundos · sin registro · 24 ciudades</span>
+        </div>
+        <div className="map-art" aria-hidden="true">
+          <span className="map-art__label map-art__label--north">NORTE</span><span className="map-art__label map-art__label--center">CENTRO</span><span className="map-art__label map-art__label--south">PATAGONIA</span>
+          <div className="route route--one"/><div className="route route--two"/>
+          <MapPin className="pin pin--one"/><MapPin className="pin pin--two"/><MapPin className="pin pin--three"/>
+          <div className="match-stamp"><b>86</b><span>tu match</span></div>
+        </div>
+      </section>
+      <section className="method" id="method">
+        <p>NO BUSCAMOS “LA MEJOR CIUDAD”</p>
+        <h2>Buscamos una vida que te cierre.</h2>
+        <div><span>01</span><p><b>Decís qué importa</b>Presupuesto, trabajo y forma de vivir.</p><span>02</span><p><b>Cruzamos evidencia</b>Datos comparables, fecha y confianza.</p><span>03</span><p><b>Ves los trade-offs</b>Cada ventaja junto a su costo real.</p></div>
+      </section>
+    </main>
+  );
+}
+
+function Intent({ answers, setAnswers }: FormProps) {
+  return <div><p className="step">01 — TU MOMENTO</p><h2>¿Qué te trae por acá?</h2><p className="question-note">No cambia qué podés ver. Nos ayuda a entender cuán concreta es la búsqueda.</p><div className="choice-grid">
+    <Choice active={answers.intent === "exploring"} value="exploring" title="Estoy explorando" detail="Quiero abrir posibilidades" onChange={(intent) => setAnswers({ ...answers, intent })}/>
+    <Choice active={answers.intent === "this_year"} value="this_year" title="Quiero mudarme este año" detail="La decisión ya está en marcha" onChange={(intent) => setAnswers({ ...answers, intent })}/>
+    <Choice active={answers.intent === "leaving"} value="leaving" title="Quiero irme de mi ciudad" detail="Sé qué quiero dejar atrás" onChange={(intent) => setAnswers({ ...answers, intent })}/>
+    <Choice active={answers.intent === "comparing"} value="comparing" title="Comparo lugares concretos" detail="Necesito ordenar opciones" onChange={(intent) => setAnswers({ ...answers, intent })}/>
+  </div></div>;
+}
+
+function Story({ answers, setAnswers, chips }: FormProps & { chips: Factor[] }) {
+  return <div><p className="step">02 — LA VIDA QUE QUERÉS</p><h2>Imaginá un buen martes.</h2><p className="question-note">¿Qué pasa alrededor tuyo? ¿Qué no puede faltar? Podés saltear este paso.</p>
+    <textarea className="story-input" value={answers.narrative} maxLength={1000} onChange={(event) => setAnswers({ ...answers, narrative: event.target.value })} placeholder="Trabajo desde casa, salgo a caminar con mi perro, quiero verde cerca y un lugar donde cenar sin manejar…" />
+    {chips.length > 0 && <div className="chips">{chips.map((factor) => <span key={factor}>{factorLabels[factor]}</span>)}</div>}
+    <p className="field-hint">La descripción se procesa y descarta. Nunca inferimos datos sensibles.</p>
+  </div>;
+}
+
+function Basics({ answers, setAnswers }: FormProps) {
+  return <div><p className="step">03 — TU REALIDAD</p><h2>Lo que tiene que cerrar.</h2><div className="basics-grid">
+    <SelectField label="Modalidad de trabajo" value={answers.workMode} onChange={(workMode) => setAnswers({ ...answers, workMode })} options={[['remote','Remoto'],['hybrid','Híbrido'],['onsite','Presencial'],['not_working','No trabajo']]}/>
+    <SelectField label="Presupuesto mensual" value={answers.budget} onChange={(budget) => setAnswers({ ...answers, budget })} options={[['low','Ajustado'],['medium','Intermedio'],['high','Amplio'],['flexible','Flexible']]}/>
+    <SelectField label="Hogar" value={answers.household} onChange={(household) => setAnswers({ ...answers, household })} options={[['solo','Vivo solo/a'],['couple','En pareja'],['family','Con familia'],['prefer_not','Prefiero no decir']]}/>
+    <SelectField label="Auto" value={answers.car} onChange={(car) => setAnswers({ ...answers, car })} options={[['yes','Sí'],['no','No'],['sometimes','A veces']]}/>
+  </div><p className="field-hint">Usamos rangos, nunca pedimos ingreso exacto.</p></div>;
+}
+
+function Priorities({ answers, setAnswers }: FormProps) {
+  return <div><p className="step">04 — LO QUE MÁS PESA</p><h2>Elegí hasta cuatro prioridades.</h2><div className="priority-grid">{lifestyleOptions.map((option) => <Choice key={option.value} active={answers.lifestyle.includes(option.value)} value={option.value} title={option.label} detail={option.note} onChange={(value) => setAnswers({ ...answers, lifestyle: answers.lifestyle.includes(value) ? answers.lifestyle.filter((item) => item !== value) : answers.lifestyle.length < 4 ? [...answers.lifestyle, value] : answers.lifestyle })}/>)}</div>
+    <p className="tradeoff-label">Si tuvieras que inclinar la balanza…</p><div className="segmented">{([['nature','Más naturaleza'],['balanced','Ambas importan'],['culture','Más ciudad']] as const).map(([value,label]) => <button key={value} className={answers.tradeoff === value ? "active" : ""} onClick={() => setAnswers({ ...answers, tradeoff: value })}>{label}</button>)}</div>
+  </div>;
+}
+
+type FormProps = { answers: QuickAnswers; setAnswers: (answers: QuickAnswers) => void };
+function SelectField<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly (readonly [T,string])[]; onChange: (value: T) => void }) {
+  return <label className="select-field"><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map(([id,text]) => <option key={id} value={id}>{text}</option>)}</select><ChevronDown size={18}/></label>;
+}
+
+function Results({ results, favorites, compare, rejected, expanded, showAll, onFavorite, onCompare, onReject, onExpand, onShowAll, onRefine, onReset }: { results: MatchResult[]; favorites: string[]; compare: string[]; rejected: string[]; expanded: string | null; showAll: boolean; onFavorite: (id: string) => void; onCompare: (id: string) => void; onReject: (id: string) => void; onExpand: (id: string) => void; onShowAll: () => void; onRefine: () => void; onReset: () => void }) {
+  const visible = showAll ? results : results.slice(0, 3);
+  const compared = results.filter((result) => compare.includes(result.city.id));
+  return <main className="results-page"><header className="results-nav"><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><div><button className="button button--ghost" onClick={onReset}><RotateCcw size={16}/> Reiniciar</button><button className="button button--ink" onClick={onRefine}>Afinar resultados</button></div></header>
+    <section className="results-intro"><p className="eyebrow">TU MAPA POSIBLE</p><h1>Encontramos lugares<br/>que hablan tu idioma.</h1><p>El porcentaje compara tus prioridades contra el snapshot actual. Confianza indica cobertura y frescura, no certeza sobre tu futuro.</p></section>
+    <section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} key={result.city.id}>
+      <div className="rank">0{result.rank}</div><div className="score"><b>{result.match}</b><span>/100<br/>MATCH</span></div>
+      <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}</p><h2>{result.city.name}</h2><p>{result.city.summary}</p><div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check size={14}/>{reason}</span>)}</div>
+        <button className="explain-toggle" onClick={() => onExpand(result.city.id)}>Cómo llegamos a este match <ChevronDown size={16}/></button>
+        {expanded === result.city.id && <div className="explanation"><div className="metrics">{[...result.contributions].sort((a,b)=>b.points-a.points).slice(0,6).map((item) => <div key={item.factor}><span>{item.label}</span><i><b style={{ width: `${item.compatibility}%` }}/></i><strong>{Math.round(item.compatibility)}</strong></div>)}</div><p><b>Cuidado con:</b> {result.tradeoffs.join(" · ")}</p><small>Modelo {result.algorithmVersion} · Snapshot {result.dataSnapshotId} · Datos al {result.city.updatedAt}</small></div>}
+      </div>
+      <aside className="result-side"><span className={`confidence confidence--${result.confidenceLabel}`}>Confianza {result.confidenceLabel}</span><b>{result.city.costRange}</b><small>rango mensual estimado</small><div><button aria-label="Guardar" className={favorites.includes(result.city.id) ? "active" : ""} onClick={() => onFavorite(result.city.id)}><Bookmark size={18}/></button><button aria-label="Comparar" className={compare.includes(result.city.id) ? "active" : ""} onClick={() => onCompare(result.city.id)}><GitCompareArrows size={18}/></button><button aria-label="Descartar" className={rejected.includes(result.city.id) ? "active" : ""} onClick={() => onReject(result.city.id)}><X size={18}/></button><button aria-label="Compartir" onClick={() => { navigator.clipboard?.writeText(window.location.href); track("result_shared", { city_id: result.city.id }); }}><Share2 size={18}/></button></div></aside>
+    </article>)}
+    {!showAll && <button className="button button--outline show-more" onClick={onShowAll}>Ver los 5 matches <ArrowRight size={18}/></button>}</section>
+    {compared.length > 0 && <CompareTray results={compared} onRemove={onCompare}/>}<PostValuePanel/><footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. Cada señal muestra alcance y fecha.</footer>
+  </main>;
+}
+
+function PostValuePanel() {
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setMessage("Enviando…");
+    const response = await fetch("/api/auth/magic-link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) });
+    const body = await response.json();
+    setMessage(response.ok ? "Revisá tu email para sincronizar." : body.error);
+    if (response.ok) track("email_capture_submitted", { benefit: "sync" });
+  }
+  return <section className="post-value"><div><p className="eyebrow">SEGUÍ EXPLORANDO</p><h2>Guardá tu mapa entre dispositivos.</h2><p>Opcional. Tus resultados ya están disponibles sin cuenta.</p></div><form onSubmit={submit}><input aria-label="Email" required type="email" value={email} onChange={(event)=>setEmail(event.target.value)} placeholder="vos@ejemplo.com"/><button className="button button--primary">Enviar enlace</button><small>{message}</small></form><div className="feedback"><span>¿Estos matches te resultaron relevantes?</span><button onClick={()=>track("match_feedback_submitted",{relevance:5})}>Sí</button><button onClick={()=>track("match_feedback_submitted",{relevance:1})}>Todavía no</button></div></section>;
+}
+
+function CompareTray({ results, onRemove }: { results: MatchResult[]; onRemove: (id: string) => void }) {
+  return <section className="compare-tray"><header><div><span>COMPARADOR</span><b>{results.length} de 3 ciudades</b></div><small>Elegí hasta tres resultados</small></header><div className="compare-grid">{results.map((result) => <article key={result.city.id}><button onClick={() => onRemove(result.city.id)}><X size={16}/></button><h3>{result.city.name}</h3><strong>{result.match}<small>/100</small></strong><p>{result.city.costRange}</p><dl><div><dt>Naturaleza</dt><dd>{result.city.metrics.nature}</dd></div><div><dt>Servicios</dt><dd>{result.city.metrics.services}</dd></div><div><dt>Caminable</dt><dd>{result.city.metrics.walkability}</dd></div></dl></article>)}</div></section>;
+}

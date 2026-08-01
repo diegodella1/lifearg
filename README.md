@@ -27,8 +27,9 @@ npm audit
 
 - `src/app`: páginas y Route Handlers.
 - `src/components`: experiencia pública y dashboard.
-- `src/lib/matching.ts`: ranking determinístico `rules-v1.0.0`.
-- `src/data/cities.ts`: snapshot editorial comparativo `ar-24-2026-07`.
+- `src/lib/matching.ts`: ranking determinístico `rules-v1.1.0`, con distancia opcional calculada localmente.
+- `src/lib/taxes.ts`: estimación local de aportes y Monotributo con valores oficiales fechados.
+- `src/data/cities.ts`: snapshot editorial comparativo `ar-24-2026-08`.
 - `supabase/migrations`: esquema PostgreSQL/PostGIS, RLS y vistas operativas.
 - `scripts/validate-data.mjs`: quality gate mínimo del catálogo.
 
@@ -70,3 +71,5 @@ Supabase es opcional: sin sus variables, sesiones y eventos operan en modo efím
 ## Privacidad
 
 Texto libre se procesa y descarta. `Reiniciar` elimina favoritos y eventos locales. La migración separa cuenta/PII de recomendaciones y activa RLS para datos privados. Producción debe completar consentimiento versionado, exportación y borrado dentro del procedimiento legal definido.
+
+La localidad actual y los importes del estimador fiscal se usan sólo en el dispositivo y no se envían a Supabase ni a analítica. Los enlaces de alquiler son salidas hacia proveedores; no se scrapean ni republican avisos.

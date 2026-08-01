@@ -7,12 +7,15 @@ import { rankCities } from "@/lib/matching";
 import { buildProfileFromAnswers } from "@/lib/profile";
 import { analyticsConsent, clearLocalData, setAnalyticsConsent, track } from "@/lib/analytics";
 import { readStoredJson, writeStoredJson } from "@/lib/storage";
-import type { Factor, MatchResult, QuickAnswers } from "@/lib/types";
+import type { Factor, MatchResult, QuickAnswers, RelocationTolerance, UserOrigin } from "@/lib/types";
 import Link from "next/link";
+import { ResultsMap } from "./results-map";
+import { RentalExplorer } from "./rental-explorer";
+import { TaxEstimator } from "./tax-estimator";
 
-type Stage = "landing" | "intent" | "story" | "basics" | "priorities" | "results";
+type Stage = "landing" | "intent" | "story" | "basics" | "origin" | "priorities" | "results";
 
-const stages: Stage[] = ["intent", "story", "basics", "priorities"];
+const stages: Stage[] = ["intent", "story", "basics", "origin", "priorities"];
 const lifestyleOptions: Array<{ value: QuickAnswers["lifestyle"][number]; label: string; note: string }> = [
   { value: "nature", label: "Naturaleza cerca", note: "verde, agua o montaña" },
   { value: "walkability", label: "Moverme a pie", note: "menos dependencia del auto" },
@@ -66,7 +69,7 @@ export function MatcherExperience() {
   }, []);
 
   const profile = useMemo(() => buildProfileFromAnswers(answers), [answers]);
-  const results = useMemo(() => rankCities(profile, cities), [profile]);
+  const results = useMemo(() => rankCities(profile, cities, { origin: answers.origin, tolerance: answers.relocationTolerance }), [profile, answers.origin, answers.relocationTolerance]);
   const progress = stage === "landing" || stage === "results" ? 0 : ((stages.indexOf(stage) + 1) / stages.length) * 100;
 
   const next = () => {
@@ -75,8 +78,8 @@ export function MatcherExperience() {
     if (index < stages.length - 1) setStage(stages[index + 1]);
     else {
       track("onboarding_completed");
-      track("recommendations_generated", { count: 5, algorithm_version: "rules-v1.0.0" });
-      void fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sessionId ? { sessionId, profile } : profile) }).catch(() => undefined);
+      track("recommendations_generated", { count: 5, algorithm_version: "rules-v1.1.0", origin_provided: Boolean(answers.origin), relocation_tolerance: answers.relocationTolerance ?? "none" });
+      if (!answers.origin) void fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sessionId ? { sessionId, profile } : profile) }).catch(() => undefined);
       setStage("results");
     }
   };
@@ -145,6 +148,7 @@ export function MatcherExperience() {
       onShowAll={() => setShowAll(true)}
       onRefine={() => setStage("priorities")}
       onReset={() => { clearLocalData(); setAnswers(initialAnswers); setFavorites([]); setCompare([]); setStage("landing"); }}
+      origin={answers.origin}
     />
   );
 
@@ -159,10 +163,11 @@ export function MatcherExperience() {
         {stage === "intent" && <Intent answers={answers} setAnswers={setAnswers} />}
         {stage === "story" && <Story answers={answers} setAnswers={setAnswers} chips={chips} />}
         {stage === "basics" && <Basics answers={answers} setAnswers={setAnswers} />}
+        {stage === "origin" && <Origin answers={answers} setAnswers={setAnswers} />}
         {stage === "priorities" && <Priorities answers={answers} setAnswers={setAnswers} />}
         <footer className="quiz-actions">
           <button className="button button--ghost" onClick={back}><ArrowLeft size={18} /> Atrás</button>
-          <button className="button button--primary" disabled={extracting} onClick={stage === "story" ? interpretStory : next}>
+          <button className="button button--primary" disabled={extracting || (stage === "origin" && Boolean(answers.origin) && !answers.relocationTolerance)} onClick={stage === "story" ? interpretStory : next}>
             {extracting ? "Interpretando…" : stage === "priorities" ? "Ver mis ciudades" : "Continuar"} <ArrowRight size={18} />
           </button>
         </footer>
@@ -230,6 +235,51 @@ function Basics({ answers, setAnswers }: FormProps) {
   </div><p className="field-hint">Usamos rangos, nunca pedimos ingreso exacto.</p></div>;
 }
 
+const toleranceOptions: Array<{ value: RelocationTolerance; label: string; note: string }> = [
+  { value: "nearby", label: "Hasta 200 km", note: "Quedarme cerca" },
+  { value: "regional", label: "Hasta 700 km", note: "Moverme dentro de una zona amplia" },
+  { value: "far", label: "Hasta 1.500 km", note: "Puedo irme lejos" },
+  { value: "anywhere", label: "Cualquier distancia", note: "La cercanía no pesa" },
+];
+
+function Origin({ answers, setAnswers }: FormProps) {
+  const [query, setQuery] = useState(answers.origin?.locality ?? "");
+  const [locations, setLocations] = useState<UserOrigin[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (query.trim().length < 3 || query === answers.origin?.locality) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSearching(true); setMessage("");
+      try {
+        const response = await fetch("/api/locations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query }), signal: controller.signal });
+        if (!response.ok) throw new Error("location search failed");
+        const body = await response.json() as { locations: UserOrigin[] };
+        setLocations(body.locations);
+        if (!body.locations.length) setMessage("No encontramos coincidencias. Probá con otra forma del nombre.");
+      } catch {
+        if (!controller.signal.aborted) {
+          const term = query.toLocaleLowerCase("es");
+          setLocations(cities.filter((city) => `${city.name} ${city.province}`.toLocaleLowerCase("es").includes(term)).slice(0, 8).map((city) => ({ georefId: city.georefId, locality: city.name, province: city.province, provinceId: city.georefId.slice(0, 2), coordinates: city.coordinates })));
+          setMessage("GeoRef no respondió. Mostramos coincidencias del catálogo.");
+        }
+      } finally { if (!controller.signal.aborted) setSearching(false); }
+    }, 300);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [query, answers.origin?.locality]);
+
+  return <div><p className="step">04 — TU PUNTO DE PARTIDA</p><h2>¿Dónde vivís ahora?</h2><p className="question-note">Es opcional. Sirve para calcular distancia; la localidad queda en este dispositivo.</p>
+    <div className="location-search"><label><span>Localidad argentina</span><input aria-autocomplete="list" aria-controls="location-options" aria-expanded={locations.length > 0} autoComplete="off" onChange={(event) => { setQuery(event.target.value); setLocations([]); setMessage(""); if (answers.origin) setAnswers({ ...answers, origin: undefined, relocationTolerance: undefined }); }} placeholder="Ejemplo: Posadas, Misiones" role="combobox" value={query}/></label>{searching && <small aria-live="polite">Buscando…</small>}
+      {locations.length > 0 && <ul id="location-options" role="listbox">{locations.map((location) => <li key={location.georefId}><button type="button" onClick={() => { setAnswers({ ...answers, origin: location }); setQuery(location.locality); setLocations([]); }}><MapPin size={17}/><span><b>{location.locality}</b><small>{location.province}</small></span></button></li>)}</ul>}
+      {message && <small aria-live="polite">{message}</small>}
+    </div>
+    {answers.origin && <div className="origin-confirmed"><p><MapPin size={18}/><span><b>{answers.origin.locality}</b><small>{answers.origin.province}</small></span><button type="button" onClick={() => { setAnswers({ ...answers, origin: undefined, relocationTolerance: undefined }); setQuery(""); }}>Cambiar</button></p><h3>¿Hasta dónde te mudarías?</h3><div className="choice-grid">{toleranceOptions.map((option) => <Choice active={answers.relocationTolerance === option.value} detail={option.note} key={option.value} onChange={(relocationTolerance) => setAnswers({ ...answers, relocationTolerance })} title={option.label} value={option.value}/>)}</div></div>}
+    {!answers.origin && <p className="field-hint">Podés continuar sin elegir una localidad; el ranking mantendrá sus otros factores.</p>}
+  </div>;
+}
+
 function Priorities({ answers, setAnswers }: FormProps) {
   return <div><p className="step">04 — LO QUE MÁS PESA</p><h2>Elegí hasta cuatro prioridades.</h2><div className="priority-grid">{lifestyleOptions.map((option) => <Choice key={option.value} active={answers.lifestyle.includes(option.value)} value={option.value} title={option.label} detail={option.note} onChange={(value) => setAnswers({ ...answers, lifestyle: answers.lifestyle.includes(value) ? answers.lifestyle.filter((item) => item !== value) : answers.lifestyle.length < 4 ? [...answers.lifestyle, value] : answers.lifestyle })}/>)}</div>
     <p className="tradeoff-label">Si tuvieras que inclinar la balanza…</p><div className="segmented">{([['nature','Más naturaleza'],['balanced','Ambas importan'],['culture','Más ciudad']] as const).map(([value,label]) => <button type="button" key={value} className={answers.tradeoff === value ? "active" : ""} onClick={() => setAnswers({ ...answers, tradeoff: value })}>{label}</button>)}</div>
@@ -241,21 +291,21 @@ function SelectField<T extends string>({ label, value, options, onChange }: { la
   return <label className="select-field"><span>{label}</span><select name={label.toLocaleLowerCase("es").replaceAll(" ", "_")} value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map(([id,text]) => <option key={id} value={id}>{text}</option>)}</select><ChevronDown aria-hidden="true" size={18}/></label>;
 }
 
-function Results({ results, favorites, compare, rejected, expanded, showAll, onFavorite, onCompare, onReject, onExpand, onShowAll, onRefine, onReset }: { results: MatchResult[]; favorites: string[]; compare: string[]; rejected: string[]; expanded: string | null; showAll: boolean; onFavorite: (id: string) => void; onCompare: (id: string) => void; onReject: (id: string) => void; onExpand: (id: string) => void; onShowAll: () => void; onRefine: () => void; onReset: () => void }) {
+function Results({ results, origin, favorites, compare, rejected, expanded, showAll, onFavorite, onCompare, onReject, onExpand, onShowAll, onRefine, onReset }: { results: MatchResult[]; origin?: UserOrigin; favorites: string[]; compare: string[]; rejected: string[]; expanded: string | null; showAll: boolean; onFavorite: (id: string) => void; onCompare: (id: string) => void; onReject: (id: string) => void; onExpand: (id: string) => void; onShowAll: () => void; onRefine: () => void; onReset: () => void }) {
   const visible = showAll ? results : results.slice(0, 3);
   const compared = results.filter((result) => compare.includes(result.city.id));
   return <main className="results-page" id="main-content"><header className="results-nav"><span className="brand">LIFE MATCH <i>ARGENTINA</i></span><div><button className="button button--ghost" onClick={onReset}><RotateCcw size={16}/> Reiniciar</button><button className="button button--ink" onClick={onRefine}>Afinar resultados</button></div></header>
     <section className="results-intro"><p className="eyebrow">TU MAPA POSIBLE</p><h1>Encontramos lugares<br/>que hablan tu idioma.</h1><p>El porcentaje compara tus prioridades contra el snapshot actual. Confianza indica cobertura y frescura, no certeza sobre tu futuro.</p></section>
-    <section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} key={result.city.id}>
+    <section className="results-grid"><ResultsMap origin={origin} results={results}/><section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} id={`result-${result.city.id}`} key={result.city.id}>
       <div className="rank">0{result.rank}</div><div className="score"><b>{result.match}</b><span>/100<br/>MATCH</span></div>
-      <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}</p><h2><Link href={`/ciudades/${result.city.id}`} onClick={() => track("city_opened", { city_id: result.city.id, rank: result.rank })}>{result.city.name}</Link></h2><p>{result.city.summary}</p><div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check size={14}/>{reason}</span>)}</div>
+      <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}{result.isCurrentCity ? " · TU PUNTO DE PARTIDA" : ""}</p><h2><Link href={`/ciudades/${result.city.id}`} onClick={() => track("city_opened", { city_id: result.city.id, rank: result.rank })}>{result.city.name}</Link></h2><p>{result.city.summary}</p>{result.distanceKm !== null && <p className="distance-note"><MapPin size={15}/>{result.distanceKm.toLocaleString("es-AR")} km desde tu localidad{result.distancePenalty ? ` · −${result.distancePenalty} puntos por distancia` : " · dentro de tu rango"}</p>}<div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check size={14}/>{reason}</span>)}</div>
         <button className="explain-toggle" onClick={() => onExpand(result.city.id)}>Cómo llegamos a este match <ChevronDown size={16}/></button>
         {expanded === result.city.id && <div className="explanation"><div className="metrics">{[...result.contributions].sort((a,b)=>b.points-a.points).slice(0,6).map((item) => <div key={item.factor}><span>{item.label}</span><i><b style={{ width: `${item.compatibility}%` }}/></i><strong>{Math.round(item.compatibility)}</strong></div>)}</div><p><b>Cuidado con:</b> {result.tradeoffs.join(" · ")}</p><small>Modelo {result.algorithmVersion} · Snapshot {result.dataSnapshotId} · Datos al {result.city.updatedAt}</small></div>}
       </div>
       <aside className="result-side"><span className={`confidence confidence--${result.confidenceLabel}`}>Confianza {result.confidenceLabel}</span><b>{result.city.costRange}</b><small>rango mensual estimado</small><div><button aria-label="Guardar" className={favorites.includes(result.city.id) ? "active" : ""} onClick={() => onFavorite(result.city.id)}><Bookmark size={18}/></button><button aria-label="Comparar" className={compare.includes(result.city.id) ? "active" : ""} onClick={() => onCompare(result.city.id)}><GitCompareArrows size={18}/></button><button aria-label="Descartar" className={rejected.includes(result.city.id) ? "active" : ""} onClick={() => onReject(result.city.id)}><X size={18}/></button><button aria-label="Compartir" onClick={() => { navigator.clipboard?.writeText(window.location.href); track("result_shared", { city_id: result.city.id }); }}><Share2 size={18}/></button></div></aside>
     </article>)}
-    {!showAll && <button className="button button--outline show-more" onClick={onShowAll}>Ver los 5 matches <ArrowRight size={18}/></button>}</section>
-    {compared.length > 0 && <CompareTray results={compared} onRemove={onCompare}/>}<PostValuePanel/><footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. <Link href="/fuentes">Ver fuentes, alcance y fecha →</Link></footer>
+    {!showAll && <button className="button button--outline show-more" onClick={onShowAll}>Ver los 5 matches <ArrowRight size={18}/></button>}</section></section>
+    <RentalExplorer results={results}/><TaxEstimator results={results}/>{compared.length > 0 && <CompareTray results={compared} onRemove={onCompare}/>}<PostValuePanel/><footer className="methodology-note">Índices editoriales comparativos. No garantizan disponibilidad, precios futuros ni satisfacción. <Link href="/fuentes">Ver fuentes, alcance y fecha →</Link></footer>
   </main>;
 }
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { ZodType } from "zod";
 
-export type ApiErrorCode = "INVALID_JSON" | "VALIDATION_FAILED" | "RATE_LIMITED" | "NOT_CONFIGURED" | "INTERNAL_ERROR";
+export type ApiErrorCode = "INVALID_JSON" | "VALIDATION_FAILED" | "RATE_LIMITED" | "NOT_CONFIGURED" | "UPSTREAM_UNAVAILABLE" | "INTERNAL_ERROR";
 
 export function apiError(code: ApiErrorCode, message: string, status: number, details?: unknown) {
   return NextResponse.json({ error: { code, message, ...(details ? { details } : {}) } }, { status });

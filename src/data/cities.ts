@@ -2,6 +2,20 @@ import type { City, FactorScores } from "@/lib/types";
 import { factorSourceIds } from "./sources";
 
 const confidence = { sourceQuality: 82, freshness: 72, coverage: 92, geographicFit: 84 };
+const geography: Record<string, readonly [string, number, number]> = {
+  "caba": ["02014010", -34.608416, -58.372135], "la-plata": ["0644103015", -34.915496, -57.947988],
+  "mar-del-plata": ["0635711003", -38.006449, -57.543838], "tandil": ["06791050", -37.328695, -59.136898],
+  "bahia-blanca": ["0605601001", -38.72277, -62.272742], "cordoba": ["1401401003", -31.415046, -64.179114],
+  "rio-cuarto": ["14098230", -33.123837, -64.349003], "villa-maria": ["14042170", -32.413504, -63.248329],
+  "rosario": ["82084270", -32.947213, -60.633176], "santa-fe": ["82063170", -31.657475, -60.710478],
+  "parana": ["30084160", -31.74016, -60.527426], "mendoza": ["50007010", -32.889733, -68.844444],
+  "san-rafael": ["5010521002", -34.617775, -68.335645], "san-luis": ["74056150", -33.302086, -66.336855],
+  "neuquen": ["58035070", -38.951829, -68.059181], "bariloche": ["6202106001", -41.135808, -71.304339],
+  "esquel": ["26035030", -42.917321, -71.321573], "puerto-madryn": ["26007020", -42.767281, -65.036676],
+  "ushuaia": ["94015020", -54.807404, -68.303757], "salta": ["6602805003", -24.783198, -65.410251],
+  "jujuy": ["38021060", -24.185829, -65.299483], "tucuman": ["90084010", -26.830389, -65.20378],
+  "posadas": ["54028030", -27.366426, -55.89398], "corrientes": ["18021020", -27.463345, -58.839473],
+};
 
 function city(
   id: string,
@@ -14,7 +28,8 @@ function city(
   summary: string,
   metrics: FactorScores,
 ): City {
-  return { id, name, province, region, archetype, populationLabel, costRange, summary, metrics, confidence, updatedAt: "2026-07-31", sourceIds: factorSourceIds };
+  const [georefId, lat, lon] = geography[id];
+  return { id, georefId, name, province, region, archetype, populationLabel, costRange, summary, coordinates: { lat, lon }, metrics, confidence, updatedAt: "2026-08-01", sourceIds: factorSourceIds };
 }
 
 // Snapshot editorial v1. Los índices son comparativos dentro del universo MVP (0–100), no estadísticas absolutas.

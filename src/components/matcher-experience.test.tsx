@@ -52,4 +52,19 @@ describe("MatcherExperience", () => {
     fireEvent.click(screen.getByRole("tab", { name: /^impuestos$/i }));
     expect(new URL(window.location.href).searchParams.get("tool")).toBe("taxes");
   });
+
+  it("skips only the optional story and origin steps", () => {
+    render(<MatcherExperience />);
+    fireEvent.click(screen.getByRole("button", { name: /descubrir mi match/i }));
+    expect(screen.queryByRole("button", { name: /^saltar$/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /continuar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^saltar$/i }));
+    expect(screen.getByRole("heading", { name: /lo que tiene que cerrar/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /continuar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^saltar$/i }));
+    expect(screen.getByRole("heading", { name: /elegí hasta cuatro prioridades/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^saltar$/i })).not.toBeInTheDocument();
+  });
 });

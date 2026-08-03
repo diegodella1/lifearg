@@ -5,12 +5,17 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.setItem("life-match:analytics-consent", "false"));
 });
 
-test("landing keeps the editorial atlas hierarchy", async ({ page }) => {
+test("landing keeps the vibrant pulse hierarchy", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /¿En qué ciudad argentina/i })).toBeVisible();
   await expect(page).toHaveScreenshot("landing.png", { animations: "disabled" });
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations.filter((violation) => violation.impact === "critical" || violation.impact === "serious")).toEqual([]);
+  if ((page.viewportSize()?.width ?? 1000) <= 900) {
+    await page.getByRole("button", { name: /abrir menú/i }).click();
+    await expect(page.getByRole("link", { name: /^fuentes$/i })).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
 });
 
 test("quiz and decision table remain visually stable", async ({ page }) => {
@@ -35,5 +40,7 @@ for (const route of ["/como-funciona", "/fuentes", "/acerca-de", "/ciudades/mend
     await page.goto(route);
     await expect(page.locator("main h1")).toBeVisible();
     await expect(page).toHaveScreenshot(`${route.replaceAll("/", "-").slice(1)}.png`, { animations: "disabled" });
+    const accessibility = await new AxeBuilder({ page }).analyze();
+    expect(accessibility.violations.filter((violation) => violation.impact === "critical" || violation.impact === "serious")).toEqual([]);
   });
 }

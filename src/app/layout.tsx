@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, Fraunces } from "next/font/google";
+import { Quicksand } from "next/font/google";
 import "./globals.css";
 
-const bodyFont = DM_Sans({ subsets: ["latin"], variable: "--font-body", display: "swap" });
-const displayFont = Fraunces({ subsets: ["latin"], variable: "--font-display", display: "swap" });
+const brandFont = Quicksand({
+  subsets: ["latin"],
+  variable: "--font-brand",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_BASE_URL ?? "https://lifearg.diegodella.ar"),
@@ -19,7 +23,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html className={`${bodyFont.variable} ${displayFont.variable}`} lang="es">
+    <html className={brandFont.variable} lang="es">
       <body><a className="skip-link" href="#main-content">Saltar al contenido</a>{children}</body>
     </html>
   );

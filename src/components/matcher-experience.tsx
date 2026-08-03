@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronDown, GitCompareArrows, MapPin, Menu, RotateCcw, Share2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronDown, Database, GitCompareArrows, MapPin, Menu, PartyPopper, RotateCcw, Share2, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { cities, factorLabels } from "@/data/cities";
 import { rankCities } from "@/lib/matching";
 import { buildProfileFromAnswers } from "@/lib/profile";
@@ -12,6 +12,7 @@ import type { RuntimeCapabilities } from "@/lib/server/capabilities";
 import Link from "next/link";
 import { ResultsMap } from "./results-map";
 import { DecisionToolkit } from "./decision-toolkit";
+import { InfoFooter } from "./info-chrome";
 
 type Stage = "landing" | "intent" | "story" | "basics" | "origin" | "priorities" | "results";
 
@@ -121,6 +122,11 @@ export function MatcherExperience({ capabilities = disabledCapabilities }: { cap
     setStage(index <= 0 ? "landing" : stages[index - 1]);
   };
 
+  const skipOptionalStage = () => {
+    if (stage === "origin") setAnswers((current) => ({ ...current, origin: undefined, relocationTolerance: undefined }));
+    next();
+  };
+
   async function interpretStory() {
     if (!answers.narrative?.trim()) return next();
     track("free_text_submitted", { char_bucket: answers.narrative.length < 100 ? "short" : "long" });
@@ -199,7 +205,7 @@ export function MatcherExperience({ capabilities = disabledCapabilities }: { cap
       <header className="quiz-header">
         <button aria-label="Volver al inicio" className="brand brand--small" onClick={() => setStage("landing")}>LM<span>·</span>AR</button>
         <div className="progress-block"><div aria-label={`Paso ${currentStep} de ${stages.length}`} aria-valuemax={stages.length} aria-valuemin={1} aria-valuenow={currentStep} className="progress-wrap" role="progressbar"><span style={{ transform: `scaleX(${progress / 100})` }} /></div><small>{currentStep} / {stages.length}</small></div>
-        <span className="progress-copy">unos {Math.max(10, 50 - stages.indexOf(stage) * 12)} segundos</span>
+        {stage === "story" || stage === "origin" ? <button className="quiz-skip" onClick={skipOptionalStage} type="button">Saltar</button> : <span className="progress-copy">unos {Math.max(10, 50 - stages.indexOf(stage) * 12)} segundos</span>}
       </header>
       <section className="quiz-card">
         {stage === "intent" && <Intent answers={answers} setAnswers={setAnswers} />}
@@ -225,9 +231,9 @@ function ConsentBanner({ onChoose }: { onChoose: (value: boolean) => void }) {
 
 function Landing({ onStart }: { onStart: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  return (
+  return <>
     <main className="landing" id="main-content">
-      <nav className="landing-nav" aria-label="Navegación principal"><span className="brand" translate="no">LIFE MATCH <i>ARGENTINA</i></span><button aria-expanded={menuOpen} aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"} className="nav-toggle" onClick={() => setMenuOpen((current) => !current)} type="button">{menuOpen ? <X aria-hidden="true" size={21}/> : <Menu aria-hidden="true" size={21}/>}</button><div className={`landing-links ${menuOpen ? "is-open" : ""}`}><Link href="/como-funciona">Cómo funciona</Link><Link href="/fuentes">Fuentes</Link><Link href="/acerca-de">Acerca de</Link><button className="button button--ink landing-links__cta" onClick={onStart} type="button">Crear mi mapa</button></div></nav>
+      <nav className="landing-nav" aria-label="Navegación principal" onKeyDown={(event) => { if (event.key === "Escape") setMenuOpen(false); }}><span className="brand" translate="no">LIFE MATCH <i>ARGENTINA</i></span><button aria-expanded={menuOpen} aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"} className="nav-toggle" onClick={() => setMenuOpen((current) => !current)} type="button">{menuOpen ? <X aria-hidden="true" size={21}/> : <Menu aria-hidden="true" size={21}/>}</button><div className={`landing-links ${menuOpen ? "is-open" : ""}`}><Link href="/como-funciona">Cómo funciona</Link><Link href="/fuentes">Fuentes</Link><Link href="/acerca-de">Acerca de</Link><button className="button button--ink landing-links__cta" onClick={onStart} type="button">Crear mi mapa</button></div></nav>
       <section className="hero">
         <div className="hero__copy">
           <p className="eyebrow">Un atlas hecho alrededor tuyo</p>
@@ -235,6 +241,7 @@ function Landing({ onStart }: { onStart: () => void }) {
           <p className="hero__lead">Contanos qué vida querés. Te mostramos opciones reales, por qué encajan y qué tendrías que resignar.</p>
           <button className="button button--primary button--large" onClick={onStart}>Descubrir mi match <ArrowRight aria-hidden="true" size={20} /></button>
           <span className="microcopy"><Sparkles aria-hidden="true" size={15} /> 45 segundos · sin registro · 24 ciudades</span>
+          <div className="hero-tags" aria-hidden="true"><span>#Montaña</span><span>#Ciudad</span><span>#Costa</span></div>
         </div>
         <div className="map-art" aria-hidden="true">
           <span className="map-art__label map-art__label--north">NORTE</span><span className="map-art__label map-art__label--center">CENTRO</span><span className="map-art__label map-art__label--south">PATAGONIA</span>
@@ -246,10 +253,15 @@ function Landing({ onStart }: { onStart: () => void }) {
       <section className="method" id="method">
         <p>NO BUSCAMOS “LA MEJOR CIUDAD”</p>
         <h2>Buscamos una vida que te cierre.</h2>
-        <div><span>01</span><p><b>Decís qué importa</b>Presupuesto, trabajo y forma de vivir.</p><span>02</span><p><b>Cruzamos evidencia</b>Datos comparables, fecha y confianza.</p><span>03</span><p><b>Ves los trade-offs</b>Cada ventaja junto a su costo real.</p></div>
+        <div className="method-grid">
+          <article><span><SlidersHorizontal aria-hidden="true" size={30}/></span><small>01</small><p><b>Decís qué importa</b>Presupuesto, trabajo y forma de vivir.</p></article>
+          <article><span><Database aria-hidden="true" size={30}/></span><small>02</small><p><b>Cruzamos evidencia</b>Datos comparables, fecha y confianza.</p></article>
+          <article><span><PartyPopper aria-hidden="true" size={30}/></span><small>03</small><p><b>Ves los trade-offs</b>Cada ventaja junto a su costo real.</p></article>
+        </div>
       </section>
     </main>
-  );
+    <InfoFooter />
+  </>;
 }
 
 function Intent({ answers, setAnswers }: FormProps) {

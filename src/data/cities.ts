@@ -1,6 +1,28 @@
 import type { City, FactorScores } from "@/lib/types";
+import { factorSourceIds } from "./sources";
 
 const confidence = { sourceQuality: 82, freshness: 72, coverage: 92, geographicFit: 84 };
+const expandingConfidence = { sourceQuality: 76, freshness: 68, coverage: 75, geographicFit: 82 };
+const geography: Record<string, readonly [string, number, number]> = {
+  "caba": ["02014010", -34.608416, -58.372135], "la-plata": ["0644103015", -34.915496, -57.947988],
+  "mar-del-plata": ["0635711003", -38.006449, -57.543838], "tandil": ["06791050", -37.328695, -59.136898],
+  "bahia-blanca": ["0605601001", -38.72277, -62.272742], "cordoba": ["1401401003", -31.415046, -64.179114],
+  "rio-cuarto": ["14098230", -33.123837, -64.349003], "villa-maria": ["14042170", -32.413504, -63.248329],
+  "rosario": ["82084270", -32.947213, -60.633176], "santa-fe": ["82063170", -31.657475, -60.710478],
+  "parana": ["30084160", -31.74016, -60.527426], "mendoza": ["50007010", -32.889733, -68.844444],
+  "san-rafael": ["5010521002", -34.617775, -68.335645], "san-luis": ["74056150", -33.302086, -66.336855],
+  "neuquen": ["58035070", -38.951829, -68.059181], "bariloche": ["6202106001", -41.135808, -71.304339],
+  "esquel": ["26035030", -42.917321, -71.321573], "puerto-madryn": ["26007020", -42.767281, -65.036676],
+  "ushuaia": ["94015020", -54.807404, -68.303757], "salta": ["6602805003", -24.783198, -65.410251],
+  "jujuy": ["38021060", -24.185829, -65.299483], "tucuman": ["90084010", -26.830389, -65.20378],
+  "posadas": ["54028030", -27.366426, -55.89398], "corrientes": ["18021020", -27.463345, -58.839473],
+  "santa-rosa": ["42021020", -36.620401, -64.29063], "viedma": ["62007090", -40.808368, -62.994929],
+  "trelew": ["26077040", -43.253187, -65.309381], "rio-gallegos": ["78021040", -51.623463, -69.215865],
+  "formosa": ["34014020", -26.185009, -58.174896], "resistencia": ["22140060", -27.451076, -58.986484],
+  "santiago-del-estero": ["86049110", -27.787684, -64.259668], "catamarca": ["10049030", -28.469013, -65.778917],
+  "la-rioja": ["46014010", -29.412884, -66.855828], "concordia": ["3001506005", -31.397451, -58.017203],
+  "rafaela": ["82021310", -31.252668, -61.491662], "san-martin-de-los-andes": ["58056010", -40.156938, -71.352714],
+};
 
 function city(
   id: string,
@@ -12,8 +34,10 @@ function city(
   costRange: string,
   summary: string,
   metrics: FactorScores,
+  cityConfidence = confidence,
 ): City {
-  return { id, name, province, region, archetype, populationLabel, costRange, summary, metrics, confidence, updatedAt: "2026-07-31" };
+  const [georefId, lat, lon] = geography[id];
+  return { id, georefId, name, province, region, archetype, populationLabel, costRange, summary, coordinates: { lat, lon }, metrics, confidence: cityConfidence, updatedAt: "2026-08-01", sourceIds: factorSourceIds };
 }
 
 // Snapshot editorial v1. Los índices son comparativos dentro del universo MVP (0–100), no estadísticas absolutas.
@@ -42,7 +66,22 @@ export const cities: City[] = [
   city("tucuman", "San Miguel de Tucumán", "Tucumán", "norte", "metropolis", "800 mil–1 M", "USD 520–800", "Centro denso del NOA con gran oferta de servicios, cultura y vida urbana.", { affordability: 77, connectivity: 84, climate: 52, services: 91, mobility: 74, nature: 78, culture: 90, walkability: 79, tranquility: 38 }),
   city("posadas", "Posadas", "Misiones", "litoral", "capital", "300–450 mil", "USD 540–820", "Costanera activa, verde subtropical y servicios de capital fronteriza.", { affordability: 73, connectivity: 80, climate: 48, services: 82, mobility: 72, nature: 85, culture: 78, walkability: 76, tranquility: 64 }),
   city("corrientes", "Corrientes", "Corrientes", "litoral", "capital", "350–500 mil", "USD 520–800", "Identidad cultural marcada y vida sobre el Paraná, con verano intenso.", { affordability: 76, connectivity: 78, climate: 45, services: 82, mobility: 70, nature: 80, culture: 86, walkability: 74, tranquility: 62 }),
+  city("santa-rosa", "Santa Rosa", "La Pampa", "centro", "capital", "100–150 mil", "USD 520–790", "Capital pampeana compacta, de ritmo tranquilo y servicios regionales.", { affordability: 77, connectivity: 76, climate: 63, services: 75, mobility: 63, nature: 62, culture: 64, walkability: 75, tranquility: 84 }, expandingConfidence),
+  city("viedma", "Viedma", "Río Negro", "patagonia", "capital", "80–120 mil", "USD 580–880", "Capital patagónica junto al río, cercana al mar y de escala cotidiana amable.", { affordability: 68, connectivity: 72, climate: 70, services: 72, mobility: 61, nature: 88, culture: 61, walkability: 73, tranquility: 85 }, expandingConfidence),
+  city("trelew", "Trelew", "Chubut", "patagonia", "intermediate", "100–130 mil", "USD 570–860", "Centro de servicios del valle inferior del Chubut, conectado con costa y fauna.", { affordability: 69, connectivity: 76, climate: 65, services: 73, mobility: 70, nature: 83, culture: 62, walkability: 70, tranquility: 76 }, expandingConfidence),
+  city("rio-gallegos", "Río Gallegos", "Santa Cruz", "patagonia", "capital", "100–140 mil", "USD 760–1.150", "Capital austral de servicios sólidos, clima exigente y grandes distancias.", { affordability: 43, connectivity: 72, climate: 48, services: 78, mobility: 69, nature: 84, culture: 60, walkability: 62, tranquility: 78 }, expandingConfidence),
+  city("formosa", "Formosa", "Formosa", "litoral", "capital", "250–350 mil", "USD 480–730", "Capital ribereña verde, accesible y calurosa, con servicios de alcance provincial.", { affordability: 82, connectivity: 71, climate: 42, services: 75, mobility: 66, nature: 82, culture: 69, walkability: 71, tranquility: 70 }, expandingConfidence),
+  city("resistencia", "Resistencia", "Chaco", "litoral", "capital", "350–450 mil", "USD 500–760", "Polo cultural y universitario del nordeste, de clima cálido y escala metropolitana.", { affordability: 79, connectivity: 78, climate: 43, services: 83, mobility: 74, nature: 68, culture: 84, walkability: 73, tranquility: 57 }, expandingConfidence),
+  city("santiago-del-estero", "Santiago del Estero", "Santiago del Estero", "norte", "capital", "300–450 mil", "USD 470–720", "Ciudad histórica de costo contenido, servicios de capital y veranos intensos.", { affordability: 84, connectivity: 74, climate: 40, services: 78, mobility: 70, nature: 60, culture: 78, walkability: 74, tranquility: 64 }, expandingConfidence),
+  city("catamarca", "San Fernando del Valle de Catamarca", "Catamarca", "norte", "capital", "150–220 mil", "USD 490–750", "Capital de valle y montaña, compacta y tranquila, con menor conectividad aérea.", { affordability: 81, connectivity: 70, climate: 66, services: 75, mobility: 62, nature: 92, culture: 74, walkability: 72, tranquility: 82 }, expandingConfidence),
+  city("la-rioja", "La Rioja", "La Rioja", "cuyo", "capital", "180–250 mil", "USD 490–760", "Capital seca y soleada junto a sierras, con costos moderados y ritmo calmo.", { affordability: 80, connectivity: 72, climate: 65, services: 76, mobility: 65, nature: 88, culture: 68, walkability: 72, tranquility: 80 }, expandingConfidence),
+  city("concordia", "Concordia", "Entre Ríos", "litoral", "intermediate", "170–230 mil", "USD 490–750", "Ciudad termal sobre el Uruguay, de costo accesible y fuerte identidad regional.", { affordability: 82, connectivity: 75, climate: 54, services: 74, mobility: 67, nature: 82, culture: 70, walkability: 73, tranquility: 72 }, expandingConfidence),
+  city("rafaela", "Rafaela", "Santa Fe", "centro", "intermediate", "100–130 mil", "USD 520–780", "Centro productivo compacto, ordenado y conectado dentro del corredor santafesino.", { affordability: 78, connectivity: 80, climate: 58, services: 78, mobility: 72, nature: 60, culture: 66, walkability: 78, tranquility: 78 }, expandingConfidence),
+  city("san-martin-de-los-andes", "San Martín de los Andes", "Neuquén", "patagonia", "nature", "35–50 mil", "USD 880–1.350", "Bosque, lago y montaña con calidad paisajística excepcional y vivienda exigente.", { affordability: 28, connectivity: 70, climate: 69, services: 61, mobility: 60, nature: 100, culture: 64, walkability: 67, tranquility: 88 }, expandingConfidence),
 ];
+
+export const CITY_DATA_SNAPSHOT_ID = "ar-36-2026-08";
+export const CITY_CATALOG_SIZE = cities.length;
 
 export const factorLabels = {
   affordability: "Costo compatible",

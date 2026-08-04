@@ -27,14 +27,15 @@ npm audit
 
 - `src/app`: páginas y Route Handlers.
 - `src/components`: experiencia pública y dashboard.
-- `src/lib/matching.ts`: ranking determinístico `rules-v1.0.0`.
-- `src/data/cities.ts`: snapshot editorial comparativo `ar-24-2026-07`.
+- `src/lib/matching.ts`: ranking determinístico `rules-v1.2.0`, con distancia opcional calculada localmente.
+- `src/lib/taxes.ts`: estimación local de aportes y Monotributo con valores oficiales fechados.
+- `src/data/cities.ts`: snapshot editorial comparativo `ar-36-2026-08`.
 - `supabase/migrations`: esquema PostgreSQL/PostGIS, RLS y vistas operativas.
 - `scripts/validate-data.mjs`: quality gate mínimo del catálogo.
 
 ## Datos y límites
 
-Los índices actuales son valores editoriales comparativos dentro de las 24 ciudades, no estadísticas absolutas. Antes de publicar comercialmente deben reemplazarse/validarse mediante pipeline documentado:
+Los índices actuales son valores editoriales comparativos dentro de las 36 ciudades, no estadísticas absolutas. Antes de publicar comercialmente deben reemplazarse/validarse mediante pipeline documentado:
 
 1. Georef v2 para IDs y geometrías.
 2. INDEC para población.
@@ -54,6 +55,21 @@ No afirmar seguridad, calidad domiciliaria de internet ni disponibilidad futura.
 5. Configurar Sentry, backups y prueba de restauración.
 6. Ejecutar revisión legal/licencias y evaluación de 30 perfiles antes de activar marketing.
 
+## Cloudflare Workers
+
+El despliegue productivo usa OpenNext y el Custom Domain `lifearg.diegodella.ar`:
+
+```bash
+npm run preview:cloudflare
+npm run deploy:cloudflare
+```
+
+`wrangler.jsonc` habilita `nodejs_compat`, assets estáticos, observabilidad y TLS/DNS automático mediante Custom Domain. Para rollback: `npx wrangler rollback`.
+
+Supabase es opcional: sin sus variables, sesiones y eventos operan en modo efímero. Para persistencia, configurar `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y el secret `SUPABASE_SERVICE_ROLE_KEY` antes del despliegue.
+
 ## Privacidad
 
 Texto libre se procesa y descarta. `Reiniciar` elimina favoritos y eventos locales. La migración separa cuenta/PII de recomendaciones y activa RLS para datos privados. Producción debe completar consentimiento versionado, exportación y borrado dentro del procedimiento legal definido.
+
+La localidad actual y los importes del estimador fiscal se usan sólo en el dispositivo y no se envían a Supabase ni a analítica. Los enlaces de alquiler son salidas hacia proveedores; no se scrapean ni republican avisos.

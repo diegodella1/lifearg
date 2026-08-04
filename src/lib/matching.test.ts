@@ -54,4 +54,11 @@ describe("rankCities", () => {
     const [result] = rankCities(getProfile(), [weakCity]);
     expect(result.confidenceLabel).toBe("baja");
   });
+
+  it("does not penalize cheaper cities when budget is high or flexible", () => {
+    for (const budget of ["high", "flexible"] as const) {
+      const results = rankCities(getProfile({ budget }), cities);
+      expect(results.every((result) => result.contributions.find((item) => item.factor === "affordability")?.compatibility === 100)).toBe(true);
+    }
+  });
 });

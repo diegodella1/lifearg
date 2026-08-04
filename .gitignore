@@ -5,3 +5,8 @@ coverage
 !.env.example
 *.tsbuildinfo
 .DS_Store
+.open-next
+.wrangler
+cloudflare-env.d.ts
+test-results
+playwright-report

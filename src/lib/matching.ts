@@ -1,10 +1,14 @@
-import { factorLabels } from "@/data/cities";
-import { FACTORS, type City, type Contribution, type Factor, type MatchResult, type UserProfile } from "./types";
+import { CITY_DATA_SNAPSHOT_ID, factorLabels } from "@/data/cities";
+import { distancePenalty, haversineKm, samePlace } from "./geography";
+import { FACTORS, type City, type Contribution, type Factor, type MatchResult, type RelocationTolerance, type UserOrigin, type UserProfile } from "./types";
+
+type MatchingContext = { origin?: UserOrigin; tolerance?: RelocationTolerance };
+export const MATCHING_ALGORITHM_VERSION = "rules-v1.2.0";
 
 function budgetCompatibility(profile: UserProfile, city: City): number {
-  if (profile.budget === "flexible") return city.metrics.affordability;
-  const ideal = profile.budget === "low" ? 90 : profile.budget === "medium" ? 65 : 35;
-  return Math.max(0, 100 - Math.abs(city.metrics.affordability - ideal) * 1.35);
+  if (profile.budget === "flexible") return 100;
+  const minimum = profile.budget === "low" ? 70 : profile.budget === "medium" ? 45 : 20;
+  return city.metrics.affordability >= minimum ? 100 : Math.max(0, 100 - (minimum - city.metrics.affordability) * 3);
 }
 
 function confidenceFor(city: City): number {
@@ -22,10 +26,13 @@ function contribution(profile: UserProfile, city: City, factor: Factor): Contrib
   return { factor, label: factorLabels[factor], compatibility, weight, points: compatibility * weight };
 }
 
-function buildResult(profile: UserProfile, city: City): Omit<MatchResult, "rank"> {
+function buildResult(profile: UserProfile, city: City, context: MatchingContext): Omit<MatchResult, "rank"> {
   const contributions = FACTORS.map((factor) => contribution(profile, city, factor));
   const weightSum = contributions.reduce((sum, item) => sum + item.weight, 0);
-  const match = Math.round(contributions.reduce((sum, item) => sum + item.points, 0) / weightSum);
+  const baseMatch = Math.round(contributions.reduce((sum, item) => sum + item.points, 0) / weightSum);
+  const distanceKm = context.origin ? haversineKm(context.origin.coordinates, city.coordinates) : null;
+  const relocationPenalty = distanceKm !== null && context.tolerance ? distancePenalty(distanceKm, context.tolerance) : 0;
+  const match = Math.max(0, baseMatch - relocationPenalty);
   const confidence = confidenceFor(city);
   const ordered = [...contributions].sort((a, b) => b.points - a.points);
   const reasons = ordered.filter((item) => item.compatibility >= 65).slice(0, 3).map((item) => item.label);
@@ -38,21 +45,26 @@ function buildResult(profile: UserProfile, city: City): Omit<MatchResult, "rank"
   return {
     city,
     match,
+    baseMatch,
+    distanceKm,
+    distancePenalty: relocationPenalty,
+    rentalAdjustment: 0,
+    isCurrentCity: context.origin ? samePlace(city, context.origin) : false,
     confidence,
     confidenceLabel: labelConfidence(confidence),
     reasons: reasons.length === 3 ? reasons : ordered.slice(0, 3).map((item) => item.label),
     tradeoffs: tradeoffs.length ? tradeoffs : ["Sin trade-offs críticos detectados"],
     contributions,
-    algorithmVersion: "rules-v1.0.0",
-    dataSnapshotId: "ar-24-2026-07",
+    algorithmVersion: MATCHING_ALGORITHM_VERSION,
+    dataSnapshotId: CITY_DATA_SNAPSHOT_ID,
   };
 }
 
-export function rankCities(profile: UserProfile, sourceCities: City[]): MatchResult[] {
+export function rankCities(profile: UserProfile, sourceCities: City[], context: MatchingContext = {}): MatchResult[] {
   const eligibleCities = profile.budget === "low"
     ? sourceCities.filter((city) => city.metrics.affordability >= 70)
     : sourceCities;
-  const scored = eligibleCities.map((city) => buildResult(profile, city)).sort((a, b) => b.match - a.match || b.confidence - a.confidence || a.city.id.localeCompare(b.city.id));
+  const scored = eligibleCities.map((city) => buildResult(profile, city, context)).sort((a, b) => b.match - a.match || b.confidence - a.confidence || a.city.id.localeCompare(b.city.id));
   const selected: typeof scored = [];
 
   for (const candidate of scored) {

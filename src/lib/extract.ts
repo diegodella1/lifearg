@@ -27,8 +27,8 @@ export function extractLocally(text: string) {
   });
 }
 
-export async function extractPreferences(text: string) {
-  if (!process.env.OPENAI_API_KEY) return { ...extractLocally(text), mode: "local" as const };
+export async function extractPreferences(text: string, aiConsent = false) {
+  if (!process.env.OPENAI_API_KEY || !aiConsent) return { ...extractLocally(text), mode: "local" as const };
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });

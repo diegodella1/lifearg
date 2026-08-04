@@ -1,0 +1,29 @@
+name: Production release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_APP_VERSION: ${{ github.sha }}
+      - run: npm run deploy:cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          NEXT_PUBLIC_APP_VERSION: ${{ github.sha }}
+          APP_BASE_URL: https://lifearg.diegodella.ar

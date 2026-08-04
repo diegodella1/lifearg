@@ -14,6 +14,16 @@ Perfil validado: intención, modalidad laboral, rango presupuestario, hogar, aut
 6. Diversificación admite máximo dos ciudades del mismo arquetipo antes del quinto lugar.
 7. Tres razones son las mayores contribuciones respaldadas; trade-offs son compatibilidades menores a 65.
 
+## Perfil v1.2
+
+- trabajo remoto prioriza conectividad;
+- trabajo híbrido combina conectividad y movilidad;
+- trabajo presencial prioriza movilidad regional;
+- no tener auto prioriza caminabilidad;
+- tener auto o usarlo ocasionalmente aumenta peso de movilidad;
+- presupuesto modifica peso y compatibilidad de costo;
+- preferencias extraídas del texto conservan factor y peso confirmado.
+
 Mismos perfil, snapshot y versión producen resultado idéntico.
 
 ## Cambios

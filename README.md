@@ -27,15 +27,15 @@ npm audit
 
 - `src/app`: páginas y Route Handlers.
 - `src/components`: experiencia pública y dashboard.
-- `src/lib/matching.ts`: ranking determinístico `rules-v1.1.0`, con distancia opcional calculada localmente.
+- `src/lib/matching.ts`: ranking determinístico `rules-v1.2.0`, con distancia opcional calculada localmente.
 - `src/lib/taxes.ts`: estimación local de aportes y Monotributo con valores oficiales fechados.
-- `src/data/cities.ts`: snapshot editorial comparativo `ar-24-2026-08`.
+- `src/data/cities.ts`: snapshot editorial comparativo `ar-36-2026-08`.
 - `supabase/migrations`: esquema PostgreSQL/PostGIS, RLS y vistas operativas.
 - `scripts/validate-data.mjs`: quality gate mínimo del catálogo.
 
 ## Datos y límites
 
-Los índices actuales son valores editoriales comparativos dentro de las 24 ciudades, no estadísticas absolutas. Antes de publicar comercialmente deben reemplazarse/validarse mediante pipeline documentado:
+Los índices actuales son valores editoriales comparativos dentro de las 36 ciudades, no estadísticas absolutas. Antes de publicar comercialmente deben reemplazarse/validarse mediante pipeline documentado:
 
 1. Georef v2 para IDs y geometrías.
 2. INDEC para población.

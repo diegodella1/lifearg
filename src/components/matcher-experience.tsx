@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronDown, Database, GitCompareArrows, MapPin, Menu, PartyPopper, RotateCcw, Share2, SlidersHorizontal, Sparkles, X } from "lucide-react";
-import { cities, factorLabels } from "@/data/cities";
-import { rankCities } from "@/lib/matching";
+import { cities, CITY_CATALOG_SIZE, factorLabels } from "@/data/cities";
+import { MATCHING_ALGORITHM_VERSION, rankCities } from "@/lib/matching";
 import { buildProfileFromAnswers } from "@/lib/profile";
 import { analyticsConsent, clearLocalData, setAnalyticsConsent, track } from "@/lib/analytics";
 import { readStoredJson, writeStoredJson } from "@/lib/storage";
@@ -13,6 +13,7 @@ import Link from "next/link";
 import { ResultsMap } from "./results-map";
 import { DecisionToolkit } from "./decision-toolkit";
 import { InfoFooter } from "./info-chrome";
+import { CityPostcard } from "./city-postcard";
 
 type Stage = "landing" | "intent" | "story" | "basics" | "origin" | "priorities" | "results";
 
@@ -112,7 +113,7 @@ export function MatcherExperience({ capabilities = disabledCapabilities }: { cap
     if (index < stages.length - 1) setStage(stages[index + 1]);
     else {
       track("onboarding_completed");
-      track("recommendations_generated", { count: 5, algorithm_version: "rules-v1.1.0", origin_provided: Boolean(answers.origin), relocation_tolerance: answers.relocationTolerance ?? "none" });
+      track("recommendations_generated", { count: 5, algorithm_version: MATCHING_ALGORITHM_VERSION, origin_provided: Boolean(answers.origin), relocation_tolerance: answers.relocationTolerance ?? "none" });
       void fetch("/api/recommendations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...(sessionId ? { sessionId } : {}), profile, ...(answers.origin ? { origin: answers.origin, relocationTolerance: answers.relocationTolerance } : {}) }) }).catch(() => undefined);
       setStage("results");
     }
@@ -134,10 +135,11 @@ export function MatcherExperience({ capabilities = disabledCapabilities }: { cap
     try {
       const response = await fetch("/api/preferences/extract", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: answers.narrative, ...(capabilities.ai && aiConsent ? { aiConsent: true } : {}) }) });
       const data = await response.json();
-      const extracted = (data.preferences ?? []).filter((item: { confidence: number }) => item.confidence >= 0.6).map((item: { factor: Factor }) => item.factor);
+      const preferences = (data.preferences ?? []).filter((item: { confidence: number }) => item.confidence >= 0.6) as Array<{ factor: Factor; weight: number }>;
+      const extracted = preferences.map((item) => item.factor);
+      const extractedWeights = Object.fromEntries(preferences.map((item) => [item.factor, item.weight])) as Partial<Record<Factor, number>>;
       setChips(extracted);
-      const lifestyle = extracted.filter((factor: Factor) => ["nature", "culture", "walkability", "tranquility", "climate", "services"].includes(factor));
-      setAnswers((current) => ({ ...current, lifestyle: [...new Set([...current.lifestyle, ...lifestyle])] as QuickAnswers["lifestyle"] }));
+      setAnswers((current) => ({ ...current, extractedWeights, lifestyle: [...new Set([...current.lifestyle, ...extracted])] as QuickAnswers["lifestyle"] }));
     } finally {
       setExtracting(false);
       next();
@@ -240,7 +242,7 @@ function Landing({ onStart }: { onStart: () => void }) {
           <h1>¿En qué ciudad argentina <em>vivirías mejor?</em></h1>
           <p className="hero__lead">Contanos qué vida querés. Te mostramos opciones reales, por qué encajan y qué tendrías que resignar.</p>
           <button className="button button--primary button--large" onClick={onStart}>Descubrir mi match <ArrowRight aria-hidden="true" size={20} /></button>
-          <span className="microcopy"><Sparkles aria-hidden="true" size={15} /> 45 segundos · sin registro · 24 ciudades</span>
+          <span className="microcopy"><Sparkles aria-hidden="true" size={15} /> 45 segundos · sin registro · {CITY_CATALOG_SIZE} ciudades</span>
           <div className="hero-tags" aria-hidden="true"><span>#Montaña</span><span>#Ciudad</span><span>#Costa</span></div>
         </div>
         <div className="map-art" aria-hidden="true">
@@ -400,7 +402,7 @@ function Results({ results, origin, favorites, compare, rejected, expanded, show
     <section className="results-intro"><p className="eyebrow">TU MAPA POSIBLE</p><h1>Encontramos lugares<br/>que hablan tu idioma.</h1><p>El porcentaje compara tus prioridades contra el snapshot actual. Confianza indica cobertura y frescura, no certeza sobre tu futuro.</p></section>
     <section className="results-grid"><ResultsMap onSelectCity={selectCity} origin={origin} results={results} selectedCityId={selectedCityId}/><section className="result-list">{visible.map((result) => <article className={`result-card ${result.rank === 1 ? "result-card--hero" : ""} ${selectedCityId === result.city.id ? "result-card--selected" : ""} ${rejected.includes(result.city.id) ? "result-card--rejected" : ""}`} id={`result-${result.city.id}`} key={result.city.id}>
       <div className="rank">0{result.rank}</div><div className="score"><b>{result.match}</b><span>/100<br/>MATCH</span></div>
-      <div className="result-main"><p className="city-meta">{result.city.province} · {result.city.populationLabel}{result.isCurrentCity ? " · TU PUNTO DE PARTIDA" : ""}</p><h2><Link href={`/ciudades/${result.city.id}`} onClick={() => track("city_opened", { city_id: result.city.id, rank: result.rank })}>{result.city.name}</Link></h2><p>{result.city.summary}</p>{result.distanceKm !== null && <p className="distance-note"><MapPin aria-hidden="true" size={15}/>{result.distanceKm.toLocaleString("es-AR")} km desde tu localidad{result.distancePenalty ? ` · −${result.distancePenalty} puntos por distancia` : " · dentro de tu rango"}</p>}<div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check aria-hidden="true" size={14}/>{reason}</span>)}</div>
+      <div className="result-main"><CityPostcard city={result.city} compact/><p className="city-meta">{result.city.province} · {result.city.populationLabel}{result.isCurrentCity ? " · TU PUNTO DE PARTIDA" : ""}</p><h2><Link href={`/ciudades/${result.city.id}`} onClick={() => track("city_opened", { city_id: result.city.id, rank: result.rank })}>{result.city.name}</Link></h2><p>{result.city.summary}</p>{result.distanceKm !== null && <p className="distance-note"><MapPin aria-hidden="true" size={15}/>{result.distanceKm.toLocaleString("es-AR")} km desde tu localidad{result.distancePenalty ? ` · −${result.distancePenalty} puntos por distancia` : " · dentro de tu rango"}</p>}<div className="reason-row">{result.reasons.map((reason) => <span key={reason}><Check aria-hidden="true" size={14}/>{reason}</span>)}</div>
         <button aria-expanded={expanded === result.city.id} className="explain-toggle" onClick={() => onExpand(result.city.id)}>Cómo llegamos a este match <ChevronDown aria-hidden="true" size={16}/></button>
         {expanded === result.city.id && <div className="explanation"><div className="metrics">{[...result.contributions].sort((a,b)=>b.points-a.points).slice(0,6).map((item) => <div key={item.factor}><span>{item.label}</span><i><b style={{ width: `${item.compatibility}%` }}/></i><strong>{Math.round(item.compatibility)}</strong></div>)}</div><p><b>Cuidado con:</b> {result.tradeoffs.join(" · ")}</p><small>Modelo {result.algorithmVersion} · Snapshot {result.dataSnapshotId} · Datos al {result.city.updatedAt}</small></div>}
       </div>

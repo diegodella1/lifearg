@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cities } from "@/data/cities";
+import { cities, CITY_DATA_SNAPSHOT_ID } from "@/data/cities";
 import { currentAdmin } from "@/lib/server/session-auth";
 import { getServiceSupabase } from "@/lib/server/supabase";
 
@@ -25,9 +25,9 @@ export default async function AdminPage() {
     return groups;
   }, {}));
   return <main className="admin-page">
-    <header><div><p className="eyebrow">OPERACIÓN · SNAPSHOT ar-24-2026-08</p><h1>Pulso del producto</h1></div><Link href="/">Volver al producto →</Link></header>
+    <header><div><p className="eyebrow">OPERACIÓN · SNAPSHOT {CITY_DATA_SNAPSHOT_ID}</p><h1>Pulso del producto</h1></div><Link href="/">Volver al producto →</Link></header>
     <section className="admin-kpis">
-      <article><span>Ciudades publicadas</span><b>{cities.length}</b><small>objetivo: 24</small></article>
+        <article><span>Ciudades publicadas</span><b>{cities.length}</b><small>próximo objetivo: 60</small></article>
       <article><span>Cobertura media</span><b>{avgCoverage}%</b><small>quality gate aprobado</small></article>
       <article><span>Frescura media</span><b>{avgFreshness}%</b><small>alquiler requiere revisión mensual</small></article>
       <article><span>Motor activo</span><b>v1.1</b><small>determinístico</small></article>

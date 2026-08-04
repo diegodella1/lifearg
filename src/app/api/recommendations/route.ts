@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { cities } from "@/data/cities";
-import { rankCities } from "@/lib/matching";
+import { cities, CITY_DATA_SNAPSHOT_ID } from "@/data/cities";
+import { MATCHING_ALGORITHM_VERSION, rankCities } from "@/lib/matching";
 import { profileSchema } from "@/lib/schema";
 import { z } from "zod";
 import { mutationOriginError, parseRequest, rateLimitError } from "@/lib/api";
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       const { error: profileError } = await db.from("profile_snapshots").insert({ id: profileSnapshotId, session_id: suppliedSessionId, payload: persistableProfile });
       if (!profileError) {
         const confidence = Math.round(results.reduce((sum, result) => sum + result.confidence, 0) / results.length);
-        const { error: runError } = await db.from("recommendation_runs").insert({ id: runId, session_id: suppliedSessionId, profile_snapshot_id: profileSnapshotId, data_snapshot_id: "ar-24-2026-08", algorithm_version_id: "rules-v1.1.0", confidence });
+        const { error: runError } = await db.from("recommendation_runs").insert({ id: runId, session_id: suppliedSessionId, profile_snapshot_id: profileSnapshotId, data_snapshot_id: CITY_DATA_SNAPSHOT_ID, algorithm_version_id: MATCHING_ALGORITHM_VERSION, confidence });
         if (!runError) {
           const { error: itemsError } = await db.from("recommendation_items").insert(results.map((result) => ({ id: crypto.randomUUID(), run_id: runId, city_id: result.city.id, rank: result.rank, match_score: result.match, confidence: result.confidence, contributions: result.contributions, tradeoffs: result.tradeoffs })));
           if (!itemsError) {

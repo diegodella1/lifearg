@@ -98,14 +98,15 @@ export type MatchResult = {
   reasons: string[];
   tradeoffs: string[];
   contributions: Contribution[];
-  algorithmVersion: "rules-v1.1.0";
-  dataSnapshotId: "ar-24-2026-08";
+  algorithmVersion: string;
+  dataSnapshotId: string;
 };
 
 export type QuickAnswers = Omit<UserProfile, "weights" | "narrative"> & {
-  lifestyle: Array<"nature" | "culture" | "walkability" | "tranquility" | "climate" | "services">;
+  lifestyle: Factor[];
   tradeoff: "nature" | "culture" | "affordability" | "connectivity" | "balanced";
   narrative?: string;
+  extractedWeights?: Partial<Record<Factor, number>>;
   origin?: UserOrigin;
   relocationTolerance?: RelocationTolerance;
 };

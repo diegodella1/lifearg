@@ -1,8 +1,9 @@
-import { factorLabels } from "@/data/cities";
+import { CITY_DATA_SNAPSHOT_ID, factorLabels } from "@/data/cities";
 import { distancePenalty, haversineKm, samePlace } from "./geography";
 import { FACTORS, type City, type Contribution, type Factor, type MatchResult, type RelocationTolerance, type UserOrigin, type UserProfile } from "./types";
 
 type MatchingContext = { origin?: UserOrigin; tolerance?: RelocationTolerance };
+export const MATCHING_ALGORITHM_VERSION = "rules-v1.2.0";
 
 function budgetCompatibility(profile: UserProfile, city: City): number {
   if (profile.budget === "flexible") return 100;
@@ -54,8 +55,8 @@ function buildResult(profile: UserProfile, city: City, context: MatchingContext)
     reasons: reasons.length === 3 ? reasons : ordered.slice(0, 3).map((item) => item.label),
     tradeoffs: tradeoffs.length ? tradeoffs : ["Sin trade-offs críticos detectados"],
     contributions,
-    algorithmVersion: "rules-v1.1.0",
-    dataSnapshotId: "ar-24-2026-08",
+    algorithmVersion: MATCHING_ALGORITHM_VERSION,
+    dataSnapshotId: CITY_DATA_SNAPSHOT_ID,
   };
 }
 

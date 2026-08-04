@@ -5,8 +5,11 @@ import Link from "next/link";
 import { Calculator, CircleAlert } from "lucide-react";
 import { estimatePersonalTaxes, type TaxStatus } from "@/lib/taxes";
 import type { MatchResult } from "@/lib/types";
+import { dataSources } from "@/data/sources";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+const taxSourceIds = ["arca-monotributo-2026-08", "argentina-aportes", "arca-ganancias", "comarb", "rentas-provinciales"];
+const taxSources = dataSources.filter((source) => taxSourceIds.includes(source.id));
 
 export function TaxEstimator({ results, selectedCityId, onSelectCity }: { results: MatchResult[]; selectedCityId: string; onSelectCity: (id: string) => void }) {
   const [status, setStatus] = useState<TaxStatus>("employee");
@@ -23,6 +26,7 @@ export function TaxEstimator({ results, selectedCityId, onSelectCity }: { result
         <label><span>Situación</span><select autoComplete="off" name="tax_status" value={status} onChange={(event) => setStatus(event.target.value as TaxStatus)}><option value="employee">Empleado/a en relación de dependencia</option><option value="monotributo_services">Monotributista de servicios</option><option value="no_work_income">Sin ingreso laboral</option></select></label>
         {status !== "no_work_income" && <label><span>{status === "employee" ? "Sueldo bruto mensual" : "Facturación mensual promedio"}</span><input autoComplete="off" inputMode="numeric" min="0" max="1000000000" name="monthly_gross" placeholder="Ejemplo: 1500000…" type="number" value={monthlyGross ?? ""} onChange={(event) => setMonthlyGross(event.target.value ? Number(event.target.value) : undefined)}/></label>}
         <div className="tax-jurisdiction"><CircleAlert aria-hidden="true" size={17}/><p><b>{city.province}:</b> Ingresos Brutos y tasas locales no están incluidos. Dependen de actividad, régimen, exenciones y domicilio fiscal.</p></div>
+        <div className="tax-sources"><span>Capas fiscales consultables</span>{taxSources.map((source) => <a href={source.url} key={source.id} rel={source.url.startsWith("http") ? "noreferrer" : undefined} target={source.url.startsWith("http") ? "_blank" : undefined}>{source.name} ↗</a>)}</div>
       </div>
       <div className="tax-result" aria-live="polite">
         {!estimate && status !== "no_work_income" ? <div className="tax-empty"><Calculator aria-hidden="true" size={28}/><p>Ingresá un monto para ver el orden de magnitud mensual.</p></div> : <TaxResult status={status} estimate={estimate ?? estimatePersonalTaxes({ status, monthlyGross: 0 })}/>} 
